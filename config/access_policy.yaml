@@ -1,0 +1,221 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  AutoSaarthi — Principal Access Policy (multi-tenant RBAC for HUMANS/ORGS)
+#
+#  This is NOT config/agent_policy.yaml. The two are deliberately separate and
+#  both are enforced:
+#
+#    agent_policy.yaml   — may the Scheduling Agent CALL telemetry.read_window?
+#    access_policy.yaml  — may THIS ORG see VIN MH12AB1001 AT ALL?
+#
+#  They compose. An agent acting on behalf of a service centre is bounded by
+#  the intersection: the agent's tool grants AND the principal's data scope.
+#  Neither alone is sufficient — an over-permissioned agent must not become a
+#  way for one dealer to read another dealer's customers.
+#
+#  Enforcement: backend/app/auth/. Scope predicates are applied in the data
+#  layer (auth/scope.py), not per-endpoint, so a new endpoint cannot forget.
+# ═══════════════════════════════════════════════════════════════════════════
+
+version: 1
+default_decision: DENY          # allowlist. An unlisted permission is denied.
+
+# ───────────────────────────────────────────────────────────────────────────
+# Organisation kinds. Determines which scope resolver applies.
+# ───────────────────────────────────────────────────────────────────────────
+org_kinds:
+  platform:
+    description: The OEM-network operator running AutoSaarthi itself.
+    scope: all
+  oem:
+    description: >
+      A vehicle manufacturer. Sees vehicles of the brands it owns, across the
+      whole parc, because warranty and quality liability follow the brand.
+    scope: brand
+  service_network:
+    description: >
+      A dealer group operating service centres. Sees vehicles connected to its
+      own centres — booked there, or with it as the owner's preferred centre.
+    scope: centres
+  fleet_operator:
+    description: A commercial operator. Sees only the VINs on its own fleet roster.
+    scope: fleet
+  customer:
+    description: An individual vehicle owner. Sees only vehicles they own.
+    scope: owned
+
+# ───────────────────────────────────────────────────────────────────────────
+# Permissions. Format: <resource>:<action>.
+#
+# customer_pii:read is separated from vehicle:read on purpose. An OEM quality
+# engineer has a legitimate need for failure data on their brand and NO
+# legitimate need for the owner's phone number — that separation is the whole
+# reason the manufacturing feedback loop can run on the real parc without
+# handing the plant a customer database.
+# ───────────────────────────────────────────────────────────────────────────
+permissions:
+  - vehicle:read
+  - telemetry:read
+  - prediction:read
+  - maintenance:read
+  - maintenance:write
+  - customer_pii:read
+  - appointment:read
+  - appointment:write
+  - forecast:read
+  - quality:read           # defect clusters, aggregate failure stats
+  - capa:draft
+  - capa:dispatch          # send to manufacturing — irreversible
+  - agent:trigger          # start an agent run
+  - ueba:read              # security console
+  - ueba:release           # clear a quarantined agent
+  - redteam:run
+  - admin:manage_users
+
+# ───────────────────────────────────────────────────────────────────────────
+# Roles. Held by a user WITHIN an organisation (see memberships table).
+# A user may hold roles in more than one org; scope is resolved per-request
+# from the org the role belongs to.
+# ───────────────────────────────────────────────────────────────────────────
+roles:
+
+  platform_admin:
+    display_name: Platform Administrator
+    org_kinds: [platform]
+    grants: ["*"]
+    notes: Break-glass. Should be a small, audited set of people.
+
+  security_analyst:
+    display_name: Security Analyst
+    org_kinds: [platform]
+    grants:
+      - ueba:read
+      - ueba:release
+      - redteam:run
+      - vehicle:read
+    notes: >
+      Runs the UEBA console. Deliberately has no customer_pii:read — watching
+      the agents does not require reading the customers they serve.
+
+  # ── OEM side ────────────────────────────────────────────────────────────
+  oem_quality_engineer:
+    display_name: Plant Quality Engineer
+    org_kinds: [oem]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - maintenance:read
+      - quality:read
+      - capa:draft
+    notes: Slide 4's user. Sees failure data for their brand, never owner identity.
+
+  oem_quality_manager:
+    display_name: Quality Manager
+    org_kinds: [oem]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - maintenance:read
+      - quality:read
+      - capa:draft
+      - capa:dispatch
+    notes: >
+      Only role that may dispatch a CAPA to the plant. Sending one starts a
+      recall investigation, so it is separated from drafting on purpose.
+
+  oem_analyst:
+    display_name: OEM Fleet Analyst
+    org_kinds: [oem]
+    grants: [vehicle:read, prediction:read, telemetry:read, forecast:read, quality:read]
+
+  # ── Service network side ────────────────────────────────────────────────
+  service_advisor:
+    display_name: Service Advisor
+    org_kinds: [service_network]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - maintenance:read
+      - maintenance:write
+      - customer_pii:read      # has to phone the owner
+      - appointment:read
+      - appointment:write
+      - agent:trigger
+    notes: Front desk. Full picture, but only for vehicles at their own centres.
+
+  service_technician:
+    display_name: Technician
+    org_kinds: [service_network]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - telemetry:read
+      - maintenance:read
+      - maintenance:write
+      - appointment:read
+    notes: Works on the car; no customer contact details, no booking rights.
+
+  centre_manager:
+    display_name: Service Centre Manager
+    org_kinds: [service_network]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - telemetry:read
+      - maintenance:read
+      - customer_pii:read
+      - appointment:read
+      - appointment:write
+      - forecast:read          # capacity planning — Slide 2's user
+      - agent:trigger
+
+  # ── Demand side ─────────────────────────────────────────────────────────
+  fleet_manager:
+    display_name: Fleet Operations Manager
+    org_kinds: [fleet_operator]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - telemetry:read
+      - maintenance:read
+      - appointment:read
+      - appointment:write
+
+  vehicle_owner:
+    display_name: Vehicle Owner
+    org_kinds: [customer]
+    grants:
+      - vehicle:read
+      - prediction:read
+      - telemetry:read
+      - maintenance:read
+      - appointment:read
+      - appointment:write
+    notes: >
+      Scope resolves to their own vehicles only. customer_pii:read is absent
+      because their own profile is served by a dedicated /me route rather than
+      the general customer lookup.
+
+# ───────────────────────────────────────────────────────────────────────────
+# Field-level redaction. Applied after row scoping, keyed on the permission a
+# principal lacks. Row access and column access are different questions: an
+# OEM legitimately sees the vehicle row and must not see who owns it.
+# ───────────────────────────────────────────────────────────────────────────
+redaction:
+  customer_pii:read:
+    redact_fields: [owner, name, phone, email, verbatim, technician_notes]
+    replacement: "[redacted]"
+
+# ───────────────────────────────────────────────────────────────────────────
+# Agent delegation. When an agent runs on behalf of a principal, the run is
+# capped at these roles' scope regardless of what the agent policy allows.
+# ───────────────────────────────────────────────────────────────────────────
+agent_delegation:
+  require_principal: true
+  # A run started by a service advisor may only touch that centre's vehicles,
+  # even though data_analysis_agent is otherwise allowed fleet-wide telemetry.
+  inherit_scope: true
+  # System-initiated sweeps (no human) run as this principal.
+  system_principal:
+    org_kind: platform
+    role: platform_admin
+    note: Scheduled sweeps are unattended; they are still attributed and audited.

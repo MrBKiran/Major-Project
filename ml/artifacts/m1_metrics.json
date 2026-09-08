@@ -1,0 +1,104 @@
+{
+  "model": "DecisionTree",
+  "classes": [
+    "Excellent",
+    "Good",
+    "Needs Service",
+    "Critical"
+  ],
+  "n_train": 1248,
+  "n_test": 312,
+  "comparison_table": [
+    {
+      "model": "DecisionTree",
+      "accuracy": 0.6603,
+      "precision_macro": 0.7455,
+      "recall_macro": 0.6533,
+      "f1_macro": 0.656
+    },
+    {
+      "model": "RandomForest",
+      "accuracy": 0.6506,
+      "precision_macro": 0.7385,
+      "recall_macro": 0.6431,
+      "f1_macro": 0.6403
+    },
+    {
+      "model": "LightGBM",
+      "accuracy": 0.6442,
+      "precision_macro": 0.6622,
+      "recall_macro": 0.6434,
+      "f1_macro": 0.6454
+    },
+    {
+      "model": "XGBoost",
+      "accuracy": 0.641,
+      "precision_macro": 0.6571,
+      "recall_macro": 0.6407,
+      "f1_macro": 0.6441
+    },
+    {
+      "model": "LogisticRegression",
+      "accuracy": 0.6378,
+      "precision_macro": 0.6471,
+      "recall_macro": 0.6422,
+      "f1_macro": 0.6417
+    },
+    {
+      "model": "SVM",
+      "accuracy": 0.4712,
+      "precision_macro": 0.5185,
+      "recall_macro": 0.4642,
+      "f1_macro": 0.4651
+    },
+    {
+      "model": "KNN",
+      "accuracy": 0.3269,
+      "precision_macro": 0.3564,
+      "recall_macro": 0.3182,
+      "f1_macro": 0.3162
+    }
+  ],
+  "shap_top_features": [
+    {
+      "feature": "dtc_count",
+      "mean_abs_shap": 0.13315
+    },
+    {
+      "feature": "brake_fluid_pct_long_mean",
+      "mean_abs_shap": 0.0421
+    },
+    {
+      "feature": "battery_voltage_short_mean",
+      "mean_abs_shap": 0.02629
+    },
+    {
+      "feature": "coolant_temp_short_mean",
+      "mean_abs_shap": 0.02409
+    },
+    {
+      "feature": "lub_oil_pressure_short_mean",
+      "mean_abs_shap": 0.02002
+    },
+    {
+      "feature": "fuel_pressure_short_std",
+      "mean_abs_shap": 0.01605
+    },
+    {
+      "feature": "brake_fluid_pct_long_slope",
+      "mean_abs_shap": 0.01582
+    },
+    {
+      "feature": "fuel_pressure_short_mean",
+      "mean_abs_shap": 0.01523
+    },
+    {
+      "feature": "lub_oil_temp_short_mean",
+      "mean_abs_shap": 0.01341
+    },
+    {
+      "feature": "battery_voltage_long_mean",
+      "mean_abs_shap": 0.01108
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "model": "IsolationForest(n_estimators=200, contamination=0.02)",
+  "trained_on": "healthy windows only",
+  "n_healthy_train": 260,
+  "n_faulty_eval": 650,
+  "threshold_p98_healthy": 0.5525,
+  "recall_on_faulty": 0.0954,
+  "false_alarm_rate_on_healthy": 0.0231,
+  "status": "NOT demo-ready \u2014 see limitation",
+  "limitation": "Recall is at noise level and this is a modelling confound, not a tuning issue: healthy and faulty score distributions overlap almost exactly (means ~0.48 vs ~0.51) across max_samples 32-256. Cause is drive-cycle load. deviation-from-nominal moves with load (0.25-0.8) by roughly the same magnitude degradation moves it, so a hard-working healthy vehicle is indistinguishable from a lightly-worn idle one. Fixing it needs load-conditioned features (residuals after regressing out drive cycle), not different hyperparameters. Do NOT put this number on a slide.",
+  "note": "M2 (supervised, 97% acc) is the detector the demo relies on. The same IsolationForest technique DOES work on the agent side in app/ueba/baseline.py, which is the UEBA Layer B story."
+}

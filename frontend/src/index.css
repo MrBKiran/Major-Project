@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* The wireframe deck's palette, applied app-wide.
+   ─────────────────────────────────────────────────────────────────────────
+   The app was dark and the imported device screens are light, which left a
+   light head unit sitting inside dark dashboard chrome — coherent nowhere.
+   Rather than rewrite ~244 hardcoded colour classes across seven files, the
+   two ramps those classes already speak are REDEFINED here.
+
+   `ink-*` is the surface ramp and keeps its direction: 900 is the page, 800
+   a card, 700/600 progressively stronger insets.
+
+   `slate-*` is Tailwind's own scale, overridden because every use of it in
+   this codebase is foreground text (145 of 161 usages) where a HIGHER number
+   meant MORE prominent against a dark ground. That relationship is what the
+   pages actually encode, so it is preserved and re-pointed at a light ground:
+   slate-100 is now near-black, slate-500 the mid grey most body copy uses.
+   Inverting the ramp rather than the individual classes is what keeps every
+   page's existing hierarchy intact through the theme change.
+
+   The few bg-/border-slate uses (16) land on greys that still read correctly
+   because the ramp stays monotonic. */
+@theme {
+  --color-ink-900: #eceef1;   /* page */
+  --color-ink-800: #ffffff;   /* card */
+  --color-ink-700: #f3f4f6;   /* inset / hover */
+  --color-ink-600: #e4e7ea;   /* stronger inset, scrollbar thumb */
+  --color-edge: #d7dade;
+
+  /* Foreground ramp — high number = more prominent, as the pages assume.
+     Every step through slate-600 clears 4.5:1 on white, because the dim end
+     of this ramp carries 11px annotations (the "~2.4d" day counts), not just
+     large text. A straight visual inversion of the dark values landed those
+     at 2.6:1 — legible against #0a0e14, unreadable against white. */
+  --color-slate-100: #0f1115;   /* 18.6:1 */
+  --color-slate-200: #16181d;   /* 17.2:1 */
+  --color-slate-300: #2f343c;   /* 11.7:1 */
+  --color-slate-400: #3c424b;
+  --color-slate-500: #4e5560;   /* 7.6:1 — body dim, the most-used step */
+  --color-slate-600: #646a74;   /* 5.4:1 on white, 4.8:1 on a tinted row */
+  --color-slate-700: #a8aeb6;   /* decorative fills only, never text */
+
+  /* Severity, retuned for a light ground: the dark-theme reds and ambers are
+     too bright on white to read as urgent — they vibrate instead. */
+  --color-p1: #d8391a;
+  --color-p2: #b26a00;
+  --color-p3: #0b7fc4;
+  --color-ok: #1f9d55;
+  --color-accent: #ff4a23;    /* the deck's CTA orange, replacing the purple */
+
+  /* Badge text. A badge paints its own hue at ~10% over white and then writes
+     in that same hue, which on a dark ground was high-contrast (pale ink on a
+     near-black wash) and on a light one collapses to ~3:1. These are the same
+     hues taken dark enough to clear 4.5:1 against their own tint, so the badge
+     keeps reading as one colour family instead of being redrawn. */
+  --color-p1-ink: #b32f13;
+  --color-p2-ink: #8a5200;
+  --color-p3-ink: #0a6394;
+  --color-ok-ink: #15703a;
+  --color-accent-ink: #b8320f;
+
+  /* Small solid buttons. White on the deck's #ff4a23 is 3.4:1 — fine for the
+     head unit's 17px hero CTA (large text needs 3:1) and short of the 4.5:1
+     small text needs, which is what the 12px buttons on the staff screens
+     are. Deepening the fill for those keeps white legible without repainting
+     the brand orange everywhere it is genuinely large. */
+  --color-accent-deep: #d13c14;
+
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink-900);
+  color: var(--color-slate-200);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1; /* tabular figures — numbers stop jittering */
+}
+
+/* Numbers that appear on slides get their own face so they read as data. */
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Thin, on-theme scrollbars — the default OS bar looks like a webpage that
+   forgot it was a dashboard. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-600) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--color-ink-600); border-radius: 99px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--color-edge); }
+
+::selection { background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: var(--color-slate-100); }
+
+/* Entrance choreography — every page and every card that opts in fades and
+   rises into place once, on mount. Re-keying the element (App.jsx keys the
+   active page by tab id) replays it on every tab switch, which is what makes
+   navigation feel like it's moving somewhere instead of just swapping DOM.
+
+   Deliberately margin-based, not transform-based: a `transform` value on an
+   element — even the identity matrix a `translateY(0)` end-state computes to
+   under `animation-fill-mode: both` — makes that element a containing block
+   for any `position: fixed` descendant (CSS spec, not a bug in one browser).
+   .animate-in wraps every page's content in App.jsx, so a transform here
+   silently breaks every modal's fixed positioning anywhere in the app —
+   found by a ChatModal rendering thousands of pixels off-screen instead of
+   centered in the viewport. */
+@keyframes rise-in {
+  from { opacity: 0; margin-top: 10px; }
+  to { opacity: 1; margin-top: 0; }
+}
+.animate-in { animation: rise-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-in-1 { animation-delay: 40ms; }
+.animate-in-2 { animation-delay: 90ms; }
+.animate-in-3 { animation-delay: 140ms; }
+.animate-in-4 { animation-delay: 190ms; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-soft { animation: pulse-soft 1.8s ease-in-out infinite; }
+
+@keyframes shimmer {
+  from { background-position: -300px 0; }
+  to { background-position: 300px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-ink-700) 25%, var(--color-ink-600) 37%, var(--color-ink-700) 63%);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in, .pulse-soft, .skeleton { animation: none !important; }
+  * { transition-duration: 0.001ms !important; }
+}

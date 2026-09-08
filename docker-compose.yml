@@ -1,0 +1,28 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: autosaarthi
+      POSTGRES_PASSWORD: autosaarthi
+      POSTGRES_DB: autosaarthi
+    # 5433 on the host, not 5432. This machine runs a native postgresql-x64-17
+    # service on Auto start, and Windows lets both bind 5432 — the native one
+    # then wins for 127.0.0.1, so the app reaches the wrong database and fails
+    # with "password authentication failed" rather than a connection error,
+    # which reads like a credentials bug rather than a port collision.
+    # The container port is unchanged, so nothing inside the compose network moves.
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autosaarthi"]
+      interval: 5s
+      retries: 10
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    # 1884 for the same reason — a native mosquitto service also holds 1883.
+    ports: ["1884:1883", "9001:9001"]
+    volumes: ["./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"]
+
+volumes:
+  pgdata:

@@ -1,0 +1,497 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  AutoSaarthi — Fleet Screenplay
+#  Commit #1. The demo is written here BEFORE any code exists.
+#  Every number in the final PPT traces back to this file.
+#
+#  Consumed by: simulator/replay.py  (publishes to MQTT fleet/{vin}/telemetry)
+#               backend/app/db/seed.py (seeds vehicles, customers, history)
+# ═══════════════════════════════════════════════════════════════════════════
+
+meta:
+  fleet_name: "Hero + M&M Aftersales Pilot Fleet"
+  tick_hz: 1                    # 1 telemetry row per second per vehicle
+  compression: 43200            # 1 real second = 12 simulated hours
+                                # → a 6-day degradation arc plays in ~12 seconds
+  seed: 42
+
+# ───────────────────────────────────────────────────────────────────────────
+# Signal envelope — nominal ranges + physical limits.
+# Feature names match the Kaggle "Automotive Vehicles Engine Health" schema
+# so models train on real data and score on simulated data unchanged.
+# ───────────────────────────────────────────────────────────────────────────
+signals:
+  engine_rpm:        { unit: rpm,   nominal: [700, 3200],  hard: [0, 6500],  noise: 45 }
+  coolant_temp:      { unit: C,     nominal: [82, 96],     hard: [-10, 130], noise: 0.6 }
+  lub_oil_pressure:  { unit: bar,   nominal: [2.6, 4.2],   hard: [0, 7],     noise: 0.08 }
+  lub_oil_temp:      { unit: C,     nominal: [75, 105],    hard: [-10, 150], noise: 0.8 }
+  fuel_pressure:     { unit: bar,   nominal: [3.0, 6.5],   hard: [0, 12],    noise: 0.15 }
+  battery_voltage:   { unit: V,     nominal: [13.6, 14.4], hard: [8, 16],    noise: 0.05 }
+  tyre_pressure:     { unit: psi,   nominal: [30, 34],     hard: [0, 50],    noise: 0.2 }
+  brake_fluid_pct:   { unit: pct,   nominal: [85, 100],    hard: [0, 100],   noise: 0.1 }
+  speed:             { unit: kmph,  nominal: [0, 90],      hard: [0, 180],   noise: 2.0 }
+  ambient_temp:      { unit: C,     nominal: [22, 41],     hard: [-5, 52],   noise: 0.4 }
+  # Added for broader OBD-II Mode 01 PID coverage — standard PIDs a generic
+  # ELM327 dongle reads on any BS6 car (India mandated OBD-II from 1 Apr 2020),
+  # beyond the original Kaggle-matched set above. Same nominal/hard/noise model,
+  # no new physics — see the note on tick()'s ignition-off collapse for the one
+  # place these need different handling than the signals above.
+  throttle_position: { unit: pct,   nominal: [8, 45],      hard: [0, 100],   noise: 3.0 }
+  intake_air_temp:   { unit: C,     nominal: [20, 45],     hard: [-10, 70],  noise: 0.5 }
+  maf_rate:          { unit: g/s,   nominal: [3, 25],      hard: [0, 200],   noise: 1.2 }
+  engine_load:       { unit: pct,   nominal: [20, 55],     hard: [0, 100],   noise: 4.0 }
+  intake_manifold_pressure: { unit: kPa, nominal: [30, 60], hard: [10, 105], noise: 1.5 }
+
+# ───────────────────────────────────────────────────────────────────────────
+# Vehicle-state signals — NOT predictive features. These exist so the in-car
+# console (see PROJECT_PLAN §2A) knows what it is allowed to put on screen.
+# The SERVER derives drive_state from these and tells the console; the client
+# never decides for itself that it is safe to show a booking screen.
+# ───────────────────────────────────────────────────────────────────────────
+state_signals:
+  ignition:          { type: enum, values: [off, acc, on, cranking] }
+  gear:              { type: enum, values: [P, R, N, D, S, L] }
+  park_brake:        { type: bool }
+  occupant_present:  { type: bool }
+  seatbelt_driver:   { type: bool }
+  ambient_lux:       { unit: lux,  nominal: [0, 90000] }   # drives day/night theme
+
+# Server-side derivation. Order matters — first match wins.
+drive_state_rules:
+  - state: IGNITION_OFF
+    when: "ignition in [off, acc]"
+    console: dark
+    agent_channel: phone_call            # fall back to outbound voice call
+  - state: PARKED
+    when: "speed < 1 and (park_brake or gear == 'P')"
+    console: full
+    agent_channel: console_voice
+    allows: [touch, slot_selection, feedback_survey, service_history]
+  - state: STOPPED_BRIEF
+    when: "speed < 1"                    # stationary but in gear — traffic light
+    console: locked
+    agent_channel: console_voice
+    allows: [voice_only]
+    note: "Treated as DRIVING. Do not tempt the driver at a red light."
+  - state: DRIVING
+    when: "speed >= 1"
+    console: locked
+    agent_channel: console_voice
+    allows: [voice_only]
+    max_elements_on_screen: 1
+
+# ───────────────────────────────────────────────────────────────────────────
+# Drive cycles — shape the signal envelope by how the vehicle is actually used.
+# ───────────────────────────────────────────────────────────────────────────
+drive_cycles:
+  highway_taxi:   { duty: 0.78, avg_speed: 68, stop_start_per_hr: 4,  load: high }
+  city_commute:   { duty: 0.35, avg_speed: 22, stop_start_per_hr: 38, load: medium }
+  urban_delivery: { duty: 0.62, avg_speed: 18, stop_start_per_hr: 61, load: high }
+  weekend_leisure: { duty: 0.09, avg_speed: 44, stop_start_per_hr: 12, load: low }
+  mixed_fleet:    { duty: 0.55, avg_speed: 41, stop_start_per_hr: 24, load: medium }
+
+# ───────────────────────────────────────────────────────────────────────────
+# Degradation templates — how a component fails, as a signal trajectory.
+# `driver` signals ramp; `dtc_at` fires a trouble code once progress crosses it.
+# ───────────────────────────────────────────────────────────────────────────
+degradations:
+
+  water_pump_impeller_wear:
+    component: water_pump
+    safety_critical: true
+    # 26, not 9: days_to_failure = horizon_days x (1 - progress), and all five
+    # vehicles on this arc have expected_prediction values implying a horizon of
+    # 22-32 days. At 9 the hero sits ~3 days out and scores P1, contradicting its
+    # own scripted "9 days / P2". The 9 appears to have been copied from the
+    # hero's expected days-remaining.
+    horizon_days: 26
+    drivers:
+      coolant_temp:     { mode: ramp,      from: 0.0,  to: +14.0, curve: exponential }
+      lub_oil_temp:     { mode: ramp,      from: 0.0,  to: +9.0,  curve: exponential }
+      engine_rpm:       { mode: variance,  factor: 1.35 }
+    dtc_at:
+      0.55: ["P0128"]   # Coolant thermostat below regulating temperature
+      0.80: ["P0217"]   # Engine over-temperature condition
+    failure_mode: "Impeller seal degradation → reduced coolant flow → overheat"
+    repair: { cost_inr: 2400, bay_minutes: 90, parts: ["water_pump_assy", "coolant_5l"] }
+    breakdown_cost_inr: 18500     # tow + possible head gasket
+    known_capa: "CAPA-2023-0871"
+
+  battery_sulphation:
+    component: battery
+    safety_critical: false
+    horizon_days: 21
+    drivers:
+      battery_voltage:  { mode: ramp, from: 0.0, to: -1.4, curve: linear }
+    dtc_at:
+      0.70: ["P0562"]   # System voltage low
+    failure_mode: "Plate sulphation from chronic short-trip undercharging"
+    repair: { cost_inr: 5200, bay_minutes: 30, parts: ["battery_65ah"] }
+    breakdown_cost_inr: 9000
+
+  brake_pad_wear:
+    component: brake_pads
+    safety_critical: true
+    horizon_days: 14
+    drivers:
+      brake_fluid_pct:  { mode: ramp, from: 0.0, to: -22.0, curve: linear }
+    dtc_at:
+      0.85: ["C1201"]
+    failure_mode: "Friction material below 3mm — stopping distance degradation"
+    repair: { cost_inr: 3100, bay_minutes: 60, parts: ["brake_pad_set_front"] }
+    breakdown_cost_inr: 22000
+
+  injector_fouling:
+    component: fuel_injector
+    safety_critical: false
+    horizon_days: 26
+    drivers:
+      fuel_pressure:    { mode: ramp,     from: 0.0, to: -1.1, curve: logarithmic }
+      engine_rpm:       { mode: variance, factor: 1.5 }
+    dtc_at:
+      0.75: ["P0171"]   # System too lean
+    failure_mode: "Carbon deposit on injector nozzle — lean mixture, misfire risk"
+    repair: { cost_inr: 4600, bay_minutes: 120, parts: ["injector_set", "fuel_filter"] }
+    breakdown_cost_inr: 14000
+
+  oil_pump_pressure_loss:
+    component: oil_pump
+    safety_critical: true
+    horizon_days: 6
+    drivers:
+      lub_oil_pressure: { mode: ramp, from: 0.0, to: -1.6, curve: exponential }
+      lub_oil_temp:     { mode: ramp, from: 0.0, to: +11.0, curve: linear }
+    dtc_at:
+      0.60: ["P0521"]   # Engine oil pressure sensor range/performance
+      0.88: ["P0524"]   # Engine oil pressure too low
+    failure_mode: "Pump relief valve wear → oil starvation at high RPM"
+    repair: { cost_inr: 7800, bay_minutes: 180, parts: ["oil_pump", "oil_5w30_4l"] }
+    breakdown_cost_inr: 65000     # seized engine
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  THE FLEET — 10 vehicles. Each one exists to prove something on a slide.
+# ═══════════════════════════════════════════════════════════════════════════
+vehicles:
+
+  # ── HERO VEHICLE · Slides 1, 2, 3 ────────────────────────────────────────
+  - vin: MH12AB1001
+    demo_role: "HERO — the story the whole demo hangs on"
+    model: Bolero
+    variant: B6 (O)
+    oem: Mahindra
+    mfg_date: 2024-08-14
+    batch_id: BATCH-2024-Q3-WP          # ← the defective water-pump batch
+    plant: Nashik
+    odometer_km: 128400
+    city: Pune
+    drive_cycle: highway_taxi
+    customer:
+      name: Ramesh Pawar
+      phone: "+91 98220 41007"
+      email: ramesh.pawar@example.in
+      language: hinglish                 # ← demo this one in Hinglish
+      occupation: "Taxi operator, Pune–Satara route"
+      daily_earning_inr: 4500
+      pref_time_window: ["09:00", "12:00"]
+      pref_center_id: SC-PUN-02
+      consent_voice: true
+      persona_notes: >
+        Price-sensitive but income-motivated. Responds to downtime-cost framing,
+        not to technical detail. Has declined two SMS reminders in the past.
+    arc:
+      degradation: water_pump_impeller_wear
+      starts_at_day: -6                  # began 6 sim-days before demo t=0
+      progress_at_t0: 0.62
+      expected_prediction:
+        component: water_pump
+        failure_prob: 0.84
+        days_to_failure: 9
+        severity: P2
+      expected_outcome: accepts_on_first_call
+      console_arc:
+        # The 15-second moment that sells the whole project (PROJECT_PLAN §2A.3).
+        - t: 0
+          drive_state: DRIVING           # 68 km/h on the Pune–Satara highway
+          speed: 68
+          expect: "agent speaks the warning; ONE card on screen; zero buttons"
+        - t: 45
+          driver_utterance: "Haan, book kar do."
+          expect: "Scheduling Agent HOLDS a slot silently. Nothing shown to driver."
+        - t: 60
+          drive_state: PARKED
+          speed: 0
+          gear: P
+          expect: "console wakes with ONE confirmation card; single tap books it"
+    seed_history:
+      - { date: 2025-11-02, type: periodic_service,  km: 118200, cost_inr: 4200 }
+      - { date: 2026-02-18, type: brake_pad_replace, km: 124900, cost_inr: 3100 }
+
+  # ── CONTROL · proves the system does not cry wolf ────────────────────────
+  - vin: MH12AB1002
+    demo_role: "CONTROL — healthy vehicle, zero alerts. Proves no false positives."
+    model: XUV700
+    variant: AX7
+    oem: Mahindra
+    mfg_date: 2025-01-22
+    batch_id: BATCH-2025-Q1-STD
+    plant: Chakan
+    odometer_km: 31200
+    city: Mumbai
+    drive_cycle: city_commute
+    customer:
+      name: Priya Deshmukh
+      phone: "+91 98204 77315"
+      email: priya.d@example.in
+      language: english
+      pref_time_window: ["17:00", "20:00"]
+      pref_center_id: SC-MUM-01
+      consent_voice: true
+    arc:
+      degradation: null
+      expected_prediction: { severity: null, health_class: Excellent }
+      expected_outcome: no_contact
+
+  # ── RECURRING DEFECT CLUSTER · Slide 4 (RCA/CAPA) ────────────────────────
+  # 7 of 10 vehicles carry BATCH-2024-Q3-WP. 5 of them are failing.
+  # Fleet-wide water-pump baseline = 2.1%. This batch = 8.0%. Ratio 3.8×.
+  - vin: DL8CA1003
+    demo_role: "CLUSTER member 1 — Delhi, urban delivery"
+    # Was a Hero Splendor Plus, which is an air-cooled 100cc motorcycle with no
+    # water pump at all — it could not have the water_pump_impeller_wear arc
+    # assigned below, and it put a Hero vehicle inside a Mahindra/Nashik batch.
+    # Bolero Pik-Up keeps the urban-delivery persona and makes the cluster
+    # physically coherent.
+    model: Bolero Pik-Up
+    oem: Mahindra
+    mfg_date: 2024-09-03
+    batch_id: BATCH-2024-Q3-WP
+    plant: Nashik
+    odometer_km: 47100
+    city: Delhi
+    drive_cycle: urban_delivery
+    customer: { name: Sunil Kumar, phone: "+91 98118 20044", language: hindi,
+                pref_center_id: SC-DEL-01, consent_voice: true }
+    arc:
+      degradation: water_pump_impeller_wear
+      progress_at_t0: 0.41
+      expected_prediction: { component: water_pump, failure_prob: 0.67, days_to_failure: 16, severity: P2 }
+      expected_outcome: accepts_after_objection
+
+  - vin: UP16CD1004
+    demo_role: "CLUSTER member 2 — tier-2 (Meerut)"
+    model: Bolero
+    oem: Mahindra
+    mfg_date: 2024-08-29
+    batch_id: BATCH-2024-Q3-WP
+    plant: Nashik
+    odometer_km: 89300
+    city: Meerut
+    drive_cycle: mixed_fleet
+    customer: { name: Arif Sheikh, phone: "+91 99270 63318", language: hindi,
+                pref_center_id: SC-MRT-01, consent_voice: true }
+    arc:
+      # KNOWN GAP: M2 reports this vehicle healthy. Early impeller wear sits
+      # inside the nominal coolant band, and detection near this progress level
+      # is borderline — RJ14GH1006 at 0.36 is caught with p=0.99 while this one
+      # is not, on noise alone. Raising the arc to 0.38 did not change it, and
+      # lowering the model's confidence floor reintroduced false positives on
+      # the MH12AB1002 control, so the miss is left standing rather than tuned
+      # away. Do not build a slide beat on this vehicle being alerted.
+      degradation: water_pump_impeller_wear
+      progress_at_t0: 0.29
+      expected_prediction: { component: water_pump, failure_prob: 0.58, days_to_failure: 23, severity: P3 }
+      expected_outcome: bundled_into_next_service
+
+  - vin: GJ01EF1005
+    demo_role: "CLUSTER member 3 — tier-2 (Rajkot)"
+    model: Scorpio Classic
+    oem: Mahindra
+    mfg_date: 2024-09-11
+    batch_id: BATCH-2024-Q3-WP
+    plant: Nashik
+    odometer_km: 62700
+    city: Rajkot
+    drive_cycle: mixed_fleet
+    customer: { name: Nilesh Patel, phone: "+91 97250 11902", language: english,
+                pref_center_id: SC-RJK-01, consent_voice: true }
+    arc:
+      degradation: water_pump_impeller_wear
+      progress_at_t0: 0.73
+      expected_prediction: { component: water_pump, failure_prob: 0.88, days_to_failure: 6, severity: P1 }
+      expected_outcome: urgent_same_day_booking     # ← P1 escalation path
+
+  - vin: RJ14GH1006
+    demo_role: "CLUSTER member 4 — tier-2 (Jaipur)"
+    model: Bolero Neo
+    oem: Mahindra
+    mfg_date: 2024-08-19
+    batch_id: BATCH-2024-Q3-WP
+    plant: Nashik
+    odometer_km: 71800
+    city: Jaipur
+    drive_cycle: mixed_fleet
+    customer: { name: Vikram Singh, phone: "+91 94140 55726", language: hindi,
+                pref_center_id: SC-JAI-01, consent_voice: true }
+    arc:
+      degradation: water_pump_impeller_wear
+      progress_at_t0: 0.35
+      expected_prediction: { component: water_pump, failure_prob: 0.61, days_to_failure: 19, severity: P2 }
+      expected_outcome: accepts_on_first_call
+
+  - vin: TS09IJ1007
+    demo_role: "CLUSTER member 5 — different failure, same batch (noise for the cluster test)"
+    model: XUV300
+    oem: Mahindra
+    mfg_date: 2024-09-07
+    batch_id: BATCH-2024-Q3-WP
+    plant: Nashik
+    odometer_km: 39400
+    city: Hyderabad
+    drive_cycle: city_commute
+    customer: { name: Lakshmi Rao, phone: "+91 90000 31842", language: english,
+                pref_center_id: SC-HYD-01, consent_voice: true }
+    arc:
+      degradation: battery_sulphation      # NOT water pump — keeps the cluster honest
+      progress_at_t0: 0.48
+      expected_prediction: { component: battery, failure_prob: 0.64, days_to_failure: 12, severity: P3 }
+      expected_outcome: bundled_into_next_service
+
+  # ── P1 URGENT · a genuinely dangerous prediction ─────────────────────────
+  - vin: KA03KL1008
+    demo_role: "P1 URGENT — oil starvation, 4 days out. Tests the escalation path."
+    model: Thar
+    oem: Mahindra
+    mfg_date: 2023-06-28
+    batch_id: BATCH-2023-Q2-STD
+    plant: Chakan
+    odometer_km: 96200
+    city: Bengaluru
+    drive_cycle: mixed_fleet
+    customer: { name: Deepak Menon, phone: "+91 98450 77341", language: english,
+                pref_center_id: SC-BLR-02, consent_voice: true }
+    arc:
+      degradation: oil_pump_pressure_loss
+      progress_at_t0: 0.79
+      expected_prediction: { component: oil_pump, failure_prob: 0.91, days_to_failure: 4, severity: P1 }
+      expected_outcome: urgent_same_day_booking
+      requires_human_approval: true        # P1 + safety_critical → HITL interrupt
+
+  # ── EDGE CASE: DECLINE → RE-PLAN · Slide 3's money shot ──────────────────
+  - vin: KA05XY1009
+    demo_role: "EDGE — declines the appointment. Forces the Master Agent to RE-PLAN."
+    model: Thar Roxx
+    oem: Mahindra
+    mfg_date: 2025-03-16
+    batch_id: BATCH-2025-Q1-STD
+    plant: Chakan
+    odometer_km: 8900
+    city: Bengaluru
+    drive_cycle: weekend_leisure
+    customer:
+      name: Aditi Nair
+      phone: "+91 99860 22518"
+      email: aditi.nair@example.in
+      language: english
+      occupation: "Product designer, weekend driver"
+      pref_time_window: ["10:00", "13:00"]
+      pref_day_preference: [saturday, sunday]
+      pref_center_id: SC-BLR-01
+      consent_voice: true
+      persona_notes: >
+        Low mileage, believes the car is "practically new". Will reject the first
+        offer with "the car feels completely fine" and "I can't do a weekday".
+        Converts only on: (a) evidence framing, then (b) zero-friction logistics.
+    arc:
+      degradation: brake_pad_wear
+      progress_at_t0: 0.58
+      expected_prediction: { component: brake_pads, failure_prob: 0.72, days_to_failure: 11, severity: P2 }
+      scripted_objections:
+        - turn: 2
+          objection: "Honestly the car feels completely fine, I drive it maybe twice a week."
+          required_strategy: EVIDENCE
+        - turn: 4
+          objection: "I really can't spare a weekday for this."
+          required_strategy: LOW_FRICTION
+      expected_outcome: declines_then_accepts_weekend_pickup
+      expected_replan:
+        trigger: customer_declined
+        master_action: "re-plan → switch engagement strategy → request doorstep pickup slot"
+
+  # ── EDGE CASE: MULTI-VEHICLE FLEET · Slide 2 ─────────────────────────────
+  - vin: TN09ZZ1010
+    demo_role: "EDGE — fleet manager with 4 vehicles. Tests batch scheduling under capacity."
+    model: Scorpio-N
+    oem: Mahindra
+    mfg_date: 2024-11-30
+    batch_id: BATCH-2024-Q4-STD
+    plant: Nashik
+    odometer_km: 54300
+    city: Chennai
+    drive_cycle: mixed_fleet
+    customer:
+      name: Karthik Raman
+      phone: "+91 98400 90015"
+      email: ops@ramanlogistics.example.in
+      language: english
+      occupation: "Fleet ops manager, Raman Logistics (4 vehicles)"
+      fleet_vins: [TN09ZZ1010, TN09ZZ1011, TN09ZZ1012, TN09ZZ1013]
+      constraint: "Never more than 1 vehicle off-road at a time"
+      pref_center_id: SC-CHN-01
+      consent_voice: true
+    arc:
+      degradation: injector_fouling
+      progress_at_t0: 0.44
+      expected_prediction: { component: fuel_injector, failure_prob: 0.63, days_to_failure: 18, severity: P3 }
+      expected_outcome: staggered_4_slot_booking
+      expected_replan:
+        trigger: capacity_conflict
+        master_action: "Scheduling Agent must stagger 4 bookings across 4 non-overlapping days"
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  SERVICE NETWORK — deliberately under-capacity in Pune to make the
+#  demand forecast (Slide 2) actually matter.
+# ═══════════════════════════════════════════════════════════════════════════
+service_centers:
+  - { id: SC-PUN-01, name: "Hero-M&M Service, Shivajinagar", city: Pune,      bays: 4, daily_capacity: 12, lat: 18.5308, lng: 73.8478, skills: [engine, cooling, brakes] }
+  - { id: SC-PUN-02, name: "Hero-M&M Service, Kothrud",      city: Pune,      bays: 6, daily_capacity: 18, lat: 18.5074, lng: 73.8077, skills: [engine, cooling, brakes, electrical] }
+  - { id: SC-MUM-01, name: "Hero-M&M Service, Andheri E",    city: Mumbai,    bays: 8, daily_capacity: 24, lat: 19.1136, lng: 72.8697, skills: [engine, cooling, brakes, electrical, bodyshop] }
+  - { id: SC-DEL-01, name: "Hero-M&M Service, Okhla",        city: Delhi,     bays: 6, daily_capacity: 18, lat: 28.5355, lng: 77.2730, skills: [engine, cooling, electrical] }
+  - { id: SC-BLR-01, name: "Hero-M&M Service, Whitefield",   city: Bengaluru, bays: 5, daily_capacity: 15, lat: 12.9698, lng: 77.7500, skills: [engine, brakes, electrical] }
+  - { id: SC-BLR-02, name: "Hero-M&M Service, Hebbal",       city: Bengaluru, bays: 4, daily_capacity: 12, lat: 13.0358, lng: 77.5970, skills: [engine, cooling, brakes] }
+  - { id: SC-CHN-01, name: "Hero-M&M Service, Guindy",       city: Chennai,   bays: 6, daily_capacity: 18, lat: 13.0067, lng: 80.2206, skills: [engine, cooling, brakes, electrical] }
+  - { id: SC-HYD-01, name: "Hero-M&M Service, Kukatpally",   city: Hyderabad, bays: 5, daily_capacity: 15, lat: 17.4948, lng: 78.3996, skills: [engine, electrical] }
+  - { id: SC-JAI-01, name: "Hero-M&M Service, Malviya Nagar",city: Jaipur,    bays: 3, daily_capacity: 9,  lat: 26.8570, lng: 75.8100, skills: [engine, cooling] }
+  - { id: SC-MRT-01, name: "Hero-M&M Service, Meerut",       city: Meerut,    bays: 2, daily_capacity: 6,  lat: 28.9845, lng: 77.7064, skills: [engine, cooling] }
+  - { id: SC-RJK-01, name: "Hero-M&M Service, Rajkot",       city: Rajkot,    bays: 3, daily_capacity: 9,  lat: 22.3039, lng: 70.8022, skills: [engine, cooling, brakes] }
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DEFECT CLUSTER — the ground truth Slide 4 must rediscover from data.
+#  Do NOT let the RCA agent read this. It exists so you can verify the
+#  clustering found the right answer.
+# ═══════════════════════════════════════════════════════════════════════════
+#  The statistics below are what backend/app/db/history_seed.py actually
+#  generates and app/rca/cluster.py actually computes — verified, not aspirational.
+#  Earlier values (5 failures / 8.0% / 3.81x) were internally inconsistent:
+#  8.0% of 40 is 3.2 vehicles, and a 3.8x lift on a 40-unit lot is too weak to
+#  survive multiple-comparison correction across the ~45 cohorts screened.
+ground_truth_cluster:
+  cluster_key: "water_pump | Nashik | BATCH-2024-Q3-WP"
+  affected_batch: BATCH-2024-Q3-WP
+  batch_size: 40                 # historical units; 46 in-parc incl. 6 demo vehicles
+  failing_in_batch: 7
+  batch_failure_rate: 0.152      # 7 / 46
+  fleet_baseline_rate: 0.019
+  lift: 8.01
+  p_value: 0.00017               # Fisher exact, one-sided
+  q_value: 0.00739               # Benjamini-Hochberg across all cohorts tested
+  true_root_cause: >
+    Supplier changed the impeller shaft seal compound from NBR to a lower-grade
+    nitrile in the Q3-2024 lot. Seal hardens above 105°C, allowing coolant
+    weep past the bearing → progressive flow loss → overheat.
+  matching_capa: CAPA-2023-0871
+  recommended_corrective: "Recall-inspect all 40 vehicles in BATCH-2024-Q3-WP"
+  recommended_preventive: >
+    Revise supplier spec to mandate FKM seal compound; add end-of-line
+    pressure-decay test at 110°C to the water-pump station at Nashik.
+  # 39 units not yet failed × ₹18,500 breakdown cost. Counts only vehicles
+  # still at risk — the 7 that already failed have nothing left to avoid.
+  projected_savings_inr: 721500

@@ -1,0 +1,78 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  AutoSaarthi — Customer Engagement persuasion policy (PROJECT_PLAN §5.4)
+#
+#  Named strategies, not a bare "be persuasive" prompt. The Master/Customer
+#  Engagement Agent selects one by name; the UI can show which is active.
+#  Templates are filled from {customer_name}/{model}/{vin}/{route}/{signal}/
+#  {reading}/{threshold}/{repair_cost}/{breakdown_cost}/{daily_loss}/
+#  {slot_day}/{slot_time}/{center_name} — whatever a given step needs.
+# ═══════════════════════════════════════════════════════════════════════════
+
+strategies:
+  PERSONALISE:
+    order: 1
+    template: >-
+      {customer_name} ji, your {model} — {vin} — the one you run on the {route}...
+
+  EVIDENCE:
+    order: 2
+    # {trend} is direction-aware ("climbing" for coolant temp, "dropping" for
+    # oil/fuel pressure and brake fluid) — see COMPONENT_SIGNAL in persuasion.py.
+    template: >-
+      Over the last {days_observed} days the {signal} has been {trend}.
+      It's now at {reading} on your {route}.
+
+  CONSEQUENCE:
+    order: 3
+    # Phrased as a noun ("A brake pads failure") so it stays grammatical for
+    # both singular and plural component names.
+    template: >-
+      A {component_label} failure mid-route means a tow plus a possible
+      follow-on repair — that's ₹{breakdown_cost}-plus and days off road.
+
+  CONTRAST:
+    order: 4
+    template: >-
+      Catching it now is a ₹{repair_cost} job, done in {repair_minutes} minutes.
+
+  LOSS_FRAME:
+    order: 5
+    template: >-
+      You'd lose about ₹{daily_loss} a day in fares while it sits in the workshop.
+
+  LOW_FRICTION:
+    order: 6
+    template: >-
+      I have {slot_day} {slot_time} at {center_name} — I can hold it right now.
+
+  CLOSE_CONFIRM:
+    order: 8
+    template: >-
+      Booked — {slot_day} {slot_time} at {center_name}. I've sent the confirmation
+      to your phone.
+
+# ───────────────────────────────────────────────────────────────────────────
+# Objection handling — keyword classification (DEMO_MODE) maps an owner's
+# reply to the strategy that should answer it. Real-LLM mode uses these same
+# labels as the classification schema for the model to pick from.
+# ───────────────────────────────────────────────────────────────────────────
+# `constraint` names a scheduling restriction the reply reveals that the
+# customer profile may not already hold. The Customer Engagement Agent re-ranks
+# the slots it was offered before answering, so the counter-offer doesn't
+# propose the very thing the owner just ruled out.
+objections:
+  - id: car_feels_fine
+    keywords: ["feels fine", "feels completely fine", "drives fine", "no problem"]
+    counter_strategy: EVIDENCE
+  - id: too_busy
+    keywords: ["can't spare", "no time", "too busy", "weekday", "can't do"]
+    counter_strategy: LOW_FRICTION
+    constraint: weekend_only
+  - id: too_expensive
+    keywords: ["expensive", "costly", "too much money"]
+    counter_strategy: CONTRAST
+  - id: will_call_back
+    keywords: ["call back", "think about it", "later"]
+    counter_strategy: LOSS_FRAME
+
+default_objection_counter: LOW_FRICTION

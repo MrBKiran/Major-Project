@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+data/raw/*
+data/processed/*
+data/chroma/
+data/audit/*.jsonl
+ml/artifacts/*.joblib
+demo/audio/*.wav
+!**/.gitkeep
+.DS_Store

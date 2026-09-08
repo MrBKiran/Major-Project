@@ -1,0 +1,49 @@
+{
+  "component_classifier": {
+    "accuracy": 0.9615,
+    "f1_macro": 0.9661
+  },
+  "progress_regressor": {
+    "mae_progress": 0.0762,
+    "mae_days_equivalent": 1.461
+  },
+  "horizon_days": {
+    "water_pump": 26,
+    "battery": 21,
+    "brake_pads": 14,
+    "fuel_injector": 26,
+    "oil_pump": 6
+  },
+  "safety_critical_map": {
+    "water_pump": true,
+    "oil_pump": true,
+    "brake_pads": true,
+    "battery": false,
+    "fuel_injector": false,
+    "none": false
+  },
+  "severity_rule": "P1: prob>0.8 & days<7 & safety_critical | P2: prob>0.6 & days<21 | P3: else",
+  "ai4i_benchmark_table": [
+    {
+      "model": "XGBoost",
+      "accuracy": 0.9865,
+      "f1": 0.7805
+    },
+    {
+      "model": "RandomForest",
+      "accuracy": 0.985,
+      "f1": 0.7458
+    },
+    {
+      "model": "DecisionTree",
+      "accuracy": 0.9805,
+      "f1": 0.6723
+    },
+    {
+      "model": "LogisticRegression",
+      "accuracy": 0.969,
+      "f1": 0.2619
+    }
+  ],
+  "ai4i_benchmark_note": "Reproduced from the cited papers' methodology on the real AI4I 2020 dataset for credibility \u2014 this table is NOT the model serving live predictions (see module docstring)."
+}
