@@ -75,18 +75,35 @@ permissions:
 # Roles. Held by a user WITHIN an organisation (see memberships table).
 # A user may hold roles in more than one org; scope is resolved per-request
 # from the org the role belongs to.
+#
+# Two fields say HOW a role's holder may prove who they are:
+#
+#   login_methods  which sign-in methods may create a session in this role:
+#                  password | google | phone_otp. Omitted means password only.
+#                  phone_otp (an SMS code) is granted to vehicle_owner alone: a code
+#                  sent by SMS is only as strong as the phone number's owner, and
+#                  SIM-swap and SS7 attacks defeat it, so no role that can read other
+#                  people's data or send a recall to a plant may be reached that way.
+#   mfa_required   whether the role needs a second factor (TOTP) once the deployment
+#                  turns MFA_ENFORCEMENT on. Omitted means required — a new role must
+#                  opt OUT explicitly. Only roles that read no customer PII and take
+#                  no irreversible action have done so.
 # ───────────────────────────────────────────────────────────────────────────
 roles:
 
   platform_admin:
     display_name: Platform Administrator
     org_kinds: [platform]
+    login_methods: [password, google]
+    mfa_required: true
     grants: ["*"]
     notes: Break-glass. Should be a small, audited set of people.
 
   security_analyst:
     display_name: Security Analyst
     org_kinds: [platform]
+    login_methods: [password, google]
+    mfa_required: true
     grants:
       - ueba:read
       - ueba:release
@@ -100,6 +117,8 @@ roles:
   oem_quality_engineer:
     display_name: Plant Quality Engineer
     org_kinds: [oem]
+    login_methods: [password, google]
+    mfa_required: false
     grants:
       - vehicle:read
       - prediction:read
@@ -111,6 +130,8 @@ roles:
   oem_quality_manager:
     display_name: Quality Manager
     org_kinds: [oem]
+    login_methods: [password, google]
+    mfa_required: true
     grants:
       - vehicle:read
       - prediction:read
@@ -122,15 +143,20 @@ roles:
       Only role that may dispatch a CAPA to the plant. Sending one starts a
       recall investigation, so it is separated from drafting on purpose.
 
-  oem_analyst:
-    display_name: OEM Fleet Analyst
-    org_kinds: [oem]
-    grants: [vehicle:read, prediction:read, telemetry:read, forecast:read, quality:read]
+  # Retired (see migration "retire oem_analyst and service_technician roles"):
+  #   oem_analyst        — a read-only subset of oem_quality_engineer with no
+  #                        screen of its own. Existing accounts became engineers.
+  #   service_technician — no technician-facing surface exists. Existing
+  #                        memberships were removed, NOT re-roled: the nearest
+  #                        role (service_advisor) grants customer PII.
+  # A role belongs here only if some screen or API path needs it.
 
   # ── Service network side ────────────────────────────────────────────────
   service_advisor:
     display_name: Service Advisor
     org_kinds: [service_network]
+    login_methods: [password, google]
+    mfa_required: true
     grants:
       - vehicle:read
       - prediction:read
@@ -142,21 +168,11 @@ roles:
       - agent:trigger
     notes: Front desk. Full picture, but only for vehicles at their own centres.
 
-  service_technician:
-    display_name: Technician
-    org_kinds: [service_network]
-    grants:
-      - vehicle:read
-      - prediction:read
-      - telemetry:read
-      - maintenance:read
-      - maintenance:write
-      - appointment:read
-    notes: Works on the car; no customer contact details, no booking rights.
-
   centre_manager:
     display_name: Service Centre Manager
     org_kinds: [service_network]
+    login_methods: [password, google]
+    mfa_required: true
     grants:
       - vehicle:read
       - prediction:read
@@ -172,6 +188,8 @@ roles:
   fleet_manager:
     display_name: Fleet Operations Manager
     org_kinds: [fleet_operator]
+    login_methods: [password, google]
+    mfa_required: false
     grants:
       - vehicle:read
       - prediction:read
@@ -183,6 +201,8 @@ roles:
   vehicle_owner:
     display_name: Vehicle Owner
     org_kinds: [customer]
+    login_methods: [password, google, phone_otp]
+    mfa_required: false
     grants:
       - vehicle:read
       - prediction:read

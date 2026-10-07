@@ -14,19 +14,45 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import hmac
-import os
 import secrets
 from dataclasses import dataclass, field
 
 import jwt
 
-from app.auth.policy import get_policy
-from app.config import settings
+from app.auth.keys import signing_key
+from app.auth.policy import LOGIN_METHODS, get_policy
 
 ALGORITHM = "HS256"
 TOKEN_TTL_MINUTES = 12 * 60
+# What a token may be used for. "full" is an ordinary session. "mfa_enroll" is issued to
+# a user whose role requires a second factor they have not set up: it can enrol and
+# nothing else, and is short-lived because it is a half-signed-in state.
+SCOPE_TTL_MINUTES = {"full": TOKEN_TTL_MINUTES, "mfa_enroll": 15}
 
-PBKDF2_ITERATIONS = 240_000
+# Who issued a token and who it is for. Both are required and checked on decode,
+# so a token minted for some other service (or by one that happens to share the
+# key) is refused here even though its signature verifies.
+ISSUER = "autosaarthi"
+AUDIENCE = "autosaarthi-api"
+# A second-factor CHALLENGE is signed for a different audience, so it can never be
+# accepted as an access token however it leaks: "you have proved who you are, now prove
+# it again" is not a credential for anything else.
+MFA_AUDIENCE = "autosaarthi-mfa"
+MFA_CHALLENGE_TTL_S = 300
+# A token missing any of these is refused. `exp` matters most: PyJWT only checks
+# expiry when the claim is present, so without this a token with none is valid
+# forever.
+REQUIRED_CLAIMS = ["exp", "iat", "sub", "org", "role", "tv", "jti", "iss", "aud", "amr", "scp"]
+
+# OWASP's 2023 floor for PBKDF2-HMAC-SHA256. Existing hashes made at a lower cost
+# keep working and are upgraded on the holder's next successful login.
+PBKDF2_ITERATIONS = 600_000
+# Sanity ceiling on a STORED count. Nothing here writes a number this high; one
+# appearing in a row would hang that account's login (and a worker) for hours.
+MAX_PBKDF2_ITERATIONS = 5_000_000
+# Bounds the work a single login request can demand. Generous — a passphrase, or a
+# password-manager value, is nowhere near it.
+MAX_PASSWORD_LENGTH = 256
 
 
 # ── passwords ──────────────────────────────────────────────────────────────
@@ -37,18 +63,57 @@ def hash_password(password: str) -> str:
     return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
 
 
-def verify_password(password: str, stored: str) -> bool:
+def _parse_hash(stored: str) -> tuple[int, bytes, bytes] | None:
+    """(iterations, salt, digest) of a stored hash, or None if it is unusable."""
     try:
         algo, iterations, salt_hex, digest_hex = stored.split("$")
         if algo != "pbkdf2_sha256":
-            return False
-        expected = hashlib.pbkdf2_hmac(
-            "sha256", password.encode(), bytes.fromhex(salt_hex), int(iterations)
-        )
-    except (ValueError, TypeError):
+            return None
+        count = int(iterations)
+        salt, digest = bytes.fromhex(salt_hex), bytes.fromhex(digest_hex)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if not 1 <= count <= MAX_PBKDF2_ITERATIONS or not salt or not digest:
+        return None
+    return count, salt, digest
+
+
+# Any fixed value: the result of burn_password_work is thrown away.
+_BURN_SALT = b"autosaarthi-timing-equaliser"
+
+
+def burn_password_work(password: str) -> None:
+    """Spend the CPU a real verification costs, and discard the answer.
+
+    Called wherever a login would otherwise skip the hash — no such account, or an
+    account whose stored hash is unusable. Without it those paths return in
+    microseconds while a real check takes ~half a second, and the difference is an
+    oracle for "does this address have an account".
+    """
+    hashlib.pbkdf2_hmac("sha256", password.encode(), _BURN_SALT, PBKDF2_ITERATIONS)
+
+
+def verify_password(password: str, stored: str) -> bool:
+    parsed = _parse_hash(stored)
+    if parsed is None:
+        burn_password_work(password)
         return False
+    iterations, salt, digest = parsed
+    expected = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
     # Constant-time: a timing-variable comparison here leaks the digest.
-    return hmac.compare_digest(expected.hex(), digest_hex)
+    return hmac.compare_digest(expected, digest)
+
+
+def has_usable_password(stored: str) -> bool:
+    """False for an account that has no password — Google or phone sign-in only."""
+    return _parse_hash(stored) is not None
+
+
+def needs_rehash(stored: str) -> bool:
+    """True if this hash should be replaced: cheaper than today's cost, or unusable.
+    A hash that is already more expensive is never downgraded."""
+    parsed = _parse_hash(stored)
+    return parsed is None or parsed[0] < PBKDF2_ITERATIONS
 
 
 # ── principal ──────────────────────────────────────────────────────────────
@@ -62,6 +127,19 @@ class Principal:
     org_name: str
     org_kind: str
     role: str
+    # How this session was authenticated (RFC 8176 "amr"): the sign-in method, then
+    # any second factor — e.g. ("password",), ("phone_otp",), ("google", "totp").
+    # /switch consults it so a session cannot be moved into a role that forbids
+    # the way it was proven.
+    amr: tuple[str, ...] = ()
+    # "full" or "mfa_enroll" — see SCOPE_TTL_MINUTES.
+    session_scope: str = "full"
+    # The token_version this request was AUTHENTICATED with, and when the token was issued.
+    # Anything that mints a replacement token must stamp the former on it, not re-read the
+    # column: a "log out everywhere" that lands between authentication and minting would
+    # otherwise be undone by the new token. The latter backs "recent sign-in" checks.
+    token_version: int = 0
+    issued_at: int = 0
     # Resolved lazily from the org kind — see auth/scope.py.
     brands: list[str] = field(default_factory=list)
     center_ids: list[str] = field(default_factory=list)
@@ -82,6 +160,16 @@ class Principal:
                 403,
                 f"role '{self.role}' lacks '{permission}'",
             )
+
+    @property
+    def login_method(self) -> str | None:
+        """The primary sign-in method — the first entry of `amr` that names one."""
+        return next((a for a in self.amr if a in LOGIN_METHODS), None)
+
+    @property
+    def second_factor_done(self) -> bool:
+        """Did this session pass a second factor (an authenticator code or a recovery code)?"""
+        return any(a in ("totp", "recovery") for a in self.amr)
 
     @property
     def scope_kind(self) -> str:
@@ -117,22 +205,20 @@ class Principal:
 
 # ── tokens ─────────────────────────────────────────────────────────────────
 
-def _secret() -> str:
-    secret = getattr(settings, "jwt_secret", "") or os.environ.get("JWT_SECRET", "")
-    if not secret:
-        # Dev fallback only. Startup logs a warning (see app.main) so this can
-        # never quietly become the production signing key.
-        return "autosaarthi-dev-secret-change-me"
-    return secret
-
-
-def issue_token(user_id: str, org_id: str, role: str, token_version: int) -> tuple[str, int]:
-    expires_in = TOKEN_TTL_MINUTES * 60
+def issue_token(user_id: str, org_id: str, role: str, token_version: int,
+                *, amr: list[str] | tuple[str, ...], scope: str = "full") -> tuple[str, int]:
+    """`amr` has no default on purpose: a caller that forgets it would silently
+    claim the session was authenticated by password."""
+    expires_in = SCOPE_TTL_MINUTES[scope] * 60
     now = dt.datetime.now(dt.timezone.utc)
     payload = {
+        "iss": ISSUER,
+        "aud": AUDIENCE,
         "sub": user_id,
         "org": org_id,
         "role": role,
+        "amr": list(amr),
+        "scp": scope,
         "tv": token_version,   # checked against users.token_version on every request
         # RFC 7519 jti. Not checked anywhere (revocation here is deliberately
         # all-or-nothing per user via `tv`, not per-session) — its job is
@@ -145,8 +231,45 @@ def issue_token(user_id: str, org_id: str, role: str, token_version: int) -> tup
         "iat": int(now.timestamp()),
         "exp": int((now + dt.timedelta(seconds=expires_in)).timestamp()),
     }
-    return jwt.encode(payload, _secret(), algorithm=ALGORITHM), expires_in
+    return jwt.encode(payload, signing_key(), algorithm=ALGORITHM), expires_in
 
 
 def decode_token(token: str) -> dict:
-    return jwt.decode(token, _secret(), algorithms=[ALGORITHM])
+    claims = jwt.decode(
+        token, signing_key(),
+        algorithms=[ALGORITHM],          # pinned: never trust the token's own `alg`
+        audience=AUDIENCE, issuer=ISSUER,
+        options={"require": REQUIRED_CLAIMS},
+    )
+    if "typ" in claims:                  # a challenge (or anything else) dressed as a session
+        raise jwt.InvalidTokenError("not an access token")
+    return claims
+
+
+def issue_mfa_challenge(user_id: str, org_id: str, role: str, token_version: int,
+                        *, amr: list[str] | tuple[str, ...]) -> tuple[str, int]:
+    """A short-lived token meaning "this user passed the first step, as this membership".
+
+    Bound to the membership chosen at the first step and to the user's token_version, so
+    revoking their sessions also voids any challenge in flight.
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    payload = {
+        "iss": ISSUER, "aud": MFA_AUDIENCE, "typ": "mfa",
+        "sub": user_id, "org": org_id, "role": role, "tv": token_version, "amr": list(amr),
+        "jti": secrets.token_urlsafe(16),
+        "iat": int(now.timestamp()),
+        "exp": int((now + dt.timedelta(seconds=MFA_CHALLENGE_TTL_S)).timestamp()),
+    }
+    return jwt.encode(payload, signing_key(), algorithm=ALGORITHM), MFA_CHALLENGE_TTL_S
+
+
+def decode_mfa_challenge(token: str) -> dict:
+    claims = jwt.decode(
+        token, signing_key(), algorithms=[ALGORITHM],
+        audience=MFA_AUDIENCE, issuer=ISSUER,
+        options={"require": ["exp", "iat", "sub", "org", "role", "tv", "amr", "jti", "typ"]},
+    )
+    if claims["typ"] != "mfa":
+        raise jwt.InvalidTokenError("not a second-factor challenge")
+    return claims

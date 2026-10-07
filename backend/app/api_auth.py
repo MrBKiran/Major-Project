@@ -2,16 +2,45 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr
+from types import SimpleNamespace
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 
-from app.auth.deps import current_principal, requires
-from app.auth.scope import can_access_vin
-from app.auth.policy import get_policy
 from app.auth.audit import AccessEvent, record
-from app.auth.ratelimit import check_login, clear_login, record_login_failure
-from app.auth.principal import Principal, issue_token, verify_password
+from app.auth.deps import current_principal, enrolling_principal, requires
+from app.auth.methods import available_methods
+from app.auth.password_policy import check_new_password
+from app.auth.policy import get_policy
+from app.auth.principal import (
+    MAX_PASSWORD_LENGTH,
+    Principal,
+    burn_password_work,
+    has_usable_password,
+    hash_password,
+    needs_rehash,
+    verify_password,
+)
+from app.auth.ratelimit import (
+    check_login,
+    check_principal,
+    check_password_change,
+    clear_login,
+    clear_password_change,
+    record_login_failure,
+    record_password_change_failure,
+)
+from app.auth.scope import can_access_vin
+from app.auth.sessions import (
+    MfaChallenge,
+    TokenResponse,
+    issue_session,
+    mint_session,
+    respond,
+    usable_memberships,
+)
+from app.config import settings
 from app.db.session import engine
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -19,7 +48,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    # Capped so one request cannot demand unbounded work; see MAX_PASSWORD_LENGTH.
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     # Which membership to act under. Omitted picks the user's only membership;
     # required when they hold several, because scope differs per org and
     # guessing would silently grant the wrong one.
@@ -27,15 +57,37 @@ class LoginRequest(BaseModel):
     role: str | None = None
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    principal: dict
+def _upgrade_password_hash(user_id: str, old_hash: str, password: str) -> None:
+    """Replace a cheaper stored hash with one at today's cost.
+
+    Conditional on the stored hash still being the one that was just verified. If
+    a password change or reset landed in between, a blind UPDATE would write the
+    OLD password's hash over it and quietly resurrect the password the user had
+    just replaced.
+    """
+    with engine.begin() as write:
+        write.execute(
+            text("UPDATE users SET password_hash = :new "
+                 "WHERE id = :u AND password_hash = :old"),
+            {"new": hash_password(password), "u": user_id, "old": old_hash},
+        )
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, request: Request) -> TokenResponse:
+@router.get("/config")
+async def auth_config() -> dict:
+    """What the sign-in screen needs, and nothing else. Public: there is nobody to
+    authenticate yet. The Google client id is public by design — the browser needs
+    it to render the button."""
+    return {
+        "methods": available_methods(),
+        "google_client_id": settings.google_client_id or None,
+        "mfa_enforced": settings.mfa_enforcement,
+    }
+
+
+@router.post("/login", response_model=TokenResponse | MfaChallenge)
+async def login(req: LoginRequest, request: Request,
+                response: Response) -> TokenResponse | MfaChallenge:
     ip = request.client.host if request.client else "unknown"
     allowed, retry_after = check_login(ip, req.email)
     if not allowed:
@@ -52,9 +104,17 @@ async def login(req: LoginRequest, request: Request) -> TokenResponse:
             {"e": req.email.lower()},
         ).first()
 
-        # Same message and same work for "no such user" and "wrong password" —
-        # a distinguishable response turns this into an account enumerator.
-        if user is None or not verify_password(req.password, user.password_hash):
+        # Same message and — this is the part that used to be untrue — the same
+        # work for "no such user", "unusable stored hash" and "wrong password".
+        # verify_password already burns a derivation for an unusable hash; an
+        # absent user has no hash to hand it, so burn one explicitly. A response
+        # that is fast exactly when the account does not exist is an enumerator.
+        if user is None:
+            burn_password_work(req.password)
+            password_ok = False
+        else:
+            password_ok = verify_password(req.password, user.password_hash)
+        if not password_ok:
             record_login_failure(ip, req.email)
             record(AccessEvent(action="auth.login_failed", principal_id=None,
                                 org_id=None, role=None, subject=req.email.lower(),
@@ -63,48 +123,94 @@ async def login(req: LoginRequest, request: Request) -> TokenResponse:
         if not user.is_active:
             raise HTTPException(403, "user is deactivated")
 
-        memberships = conn.execute(
-            text("SELECT m.org_id, m.role, o.name, o.kind FROM memberships m "
-                 "JOIN organizations o ON o.id = m.org_id WHERE m.user_id = :u"),
-            {"u": user.id},
-        ).all()
+        # The password is right, so this is the one moment the plaintext is in
+        # hand to move an older, cheaper hash to today's cost.
+        if needs_rehash(user.password_hash):
+            _upgrade_password_hash(user.id, user.password_hash, req.password)
 
-    if not memberships:
-        raise HTTPException(403, "user belongs to no organisation")
-
-    if req.org_id or req.role:
-        chosen = next((m for m in memberships
-                        if (not req.org_id or m.org_id == req.org_id)
-                        and (not req.role or m.role == req.role)), None)
-        if chosen is None:
-            raise HTTPException(403, "no such membership for this user")
-    elif len(memberships) == 1:
-        chosen = memberships[0]
-    else:
-        raise HTTPException(400, {
-            "error": "multiple memberships — specify org_id and role",
-            "memberships": [
-                {"org_id": m.org_id, "org_name": m.name, "role": m.role}
-                for m in memberships
-            ],
-        })
-
+    # Everything after "the password is right" is shared with every other way of
+    # signing in — see auth/sessions.py.
+    result = issue_session(user, methods=("password",), org_id=req.org_id, role=req.role)
     clear_login(ip, req.email)
-    token, expires_in = issue_token(user.id, chosen.org_id, chosen.role, user.token_version)
-    record(AccessEvent(action="auth.login", principal_id=user.id,
-                        org_id=chosen.org_id, role=chosen.role,
-                        subject=user.email, outcome="allowed"))
-    principal = Principal(
-        user_id=user.id, email=user.email, full_name=user.full_name,
-        org_id=chosen.org_id, org_name=chosen.name, org_kind=chosen.kind,
-        role=chosen.role,
-    )
-    return TokenResponse(access_token=token, expires_in=expires_in,
-                          principal=principal.describe())
+    return respond(response, result)      # 202 + a challenge while a second factor is owed
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    new_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+@router.post("/password/change", response_model=TokenResponse)
+async def change_password(req: PasswordChangeRequest,
+                          principal: Principal = Depends(current_principal)) -> TokenResponse:
+    """Change your own password.
+
+    Asks for the CURRENT one — a stolen session alone must not be enough to lock the
+    owner out — throttles wrong guesses at it, ends every session (the usual reason
+    to change a password is "someone else may have it"), and returns a fresh token so
+    the caller is not signed out along with everyone else.
+    """
+    # Each attempt hashes twice (the current password, then the new one against it), and
+    # policy failures are not "wrong guesses" so the throttle below never sees them: without
+    # this budget an authenticated user could keep a worker busy indefinitely.
+    within_budget, retry_after = check_principal(principal.user_id, heavy=True)
+    if not within_budget:
+        raise HTTPException(429, f"too many requests, retry in {retry_after}s",
+                            headers={"Retry-After": str(retry_after)})
+
+    allowed, retry_after = check_password_change(principal.user_id)
+    if not allowed:
+        raise HTTPException(429, f"too many attempts, retry in {retry_after}s",
+                            headers={"Retry-After": str(retry_after)})
+
+    with engine.connect() as conn:
+        user = conn.execute(
+            text("SELECT id, email, full_name, password_hash, token_version "
+                 "FROM users WHERE id = :u"), {"u": principal.user_id}).first()
+
+    if not has_usable_password(user.password_hash):
+        raise HTTPException(403, "this account has no password to change")
+
+    if not verify_password(req.current_password, user.password_hash):
+        record_password_change_failure(principal.user_id)
+        record(AccessEvent(action="auth.password_change_failed", principal_id=principal.user_id,
+                           org_id=principal.org_id, role=principal.role, subject=user.email,
+                           outcome="denied", detail={"reason": "wrong_current_password"}))
+        # 403, not 401: the SESSION is fine and the client treats any 401 as "your
+        # session is gone" and signs the user out — a typo here must not do that.
+        raise HTTPException(403, "the current password is incorrect")
+
+    problems = check_new_password(req.new_password, email=user.email,
+                                  current_hash=user.password_hash)
+    if problems:
+        raise HTTPException(422, {"error": "that password is not acceptable",
+                                  "reasons": problems})
+
+    # Conditional on the hash still being the one just verified, like the rehash on
+    # login: a concurrent change must not be silently overwritten.
+    with engine.begin() as write:
+        changed = write.execute(
+            text("UPDATE users SET password_hash = :new, token_version = token_version + 1 "
+                 "WHERE id = :u AND password_hash = :old RETURNING token_version"),
+            {"new": hash_password(req.new_password), "u": user.id, "old": user.password_hash},
+        ).first()
+    if changed is None:
+        raise HTTPException(409, "the password was changed elsewhere; sign in again")
+
+    clear_password_change(principal.user_id)
+    record(AccessEvent(action="auth.password_changed", principal_id=principal.user_id,
+                       org_id=principal.org_id, role=principal.role, subject=user.email,
+                       outcome="allowed", detail={"sessions_revoked": True}))
+    return mint_session(
+        SimpleNamespace(id=user.id, email=user.email, full_name=user.full_name,
+                        token_version=changed.token_version),
+        SimpleNamespace(org_id=principal.org_id, role=principal.role,
+                        name=principal.org_name, kind=principal.org_kind),
+        amr=principal.amr, audit_detail={"reason": "password_changed"})
 
 
 @router.post("/logout")
-async def logout(principal: Principal = Depends(current_principal)) -> dict:
+async def logout(principal: Principal = Depends(enrolling_principal)) -> dict:
     """Revoke every token issued to this account, not just the one used here.
 
     There is no per-device session identity to revoke individually (see the
@@ -173,10 +279,13 @@ async def memberships(principal: Principal = Depends(current_principal)) -> dict
                  "ORDER BY o.name"),
             {"u": principal.user_id},
         ).all()
+    # Only what THIS session could switch to: /switch enforces the same rule, and an
+    # org switcher that offers a role the switch would then refuse is a dead button.
     return {"memberships": [
         {"org_id": r.org_id, "org_name": r.name, "org_kind": r.kind, "role": r.role,
          "active": r.org_id == principal.org_id and r.role == principal.role}
-        for r in rows
+        for r in usable_memberships(rows, principal.login_method,
+                                    second_factor_done=principal.second_factor_done)
     ]}
 
 
@@ -230,23 +339,23 @@ async def switch_membership(req: SwitchRequest,
                  "WHERE m.user_id = :u AND m.org_id = :o AND m.role = :r"),
             {"u": principal.user_id, "o": req.org_id, "r": req.role},
         ).first()
-        user = conn.execute(
-            text("SELECT token_version FROM users WHERE id = :u"), {"u": principal.user_id},
-        ).first()
 
-    if row is None:
+    # Switching asks for no credential, so it must not become a way around the
+    # rule that a role can only be reached by the methods it allows: a session
+    # proven by an SMS code may move only between roles that accept an SMS code.
+    if row is None or not usable_memberships([row], principal.login_method,
+                                             second_factor_done=principal.second_factor_done):
         raise HTTPException(403, "not a membership held by this account")
 
-    token, expires_in = issue_token(principal.user_id, row.org_id, row.role, user.token_version)
-    record(AccessEvent(action="auth.login", principal_id=principal.user_id,
-                        org_id=row.org_id, role=row.role, subject=principal.email,
-                        outcome="allowed", detail={"switched_from": principal.org_id}))
-    new_principal = Principal(
-        user_id=principal.user_id, email=principal.email, full_name=principal.full_name,
-        org_id=row.org_id, org_name=row.name, org_kind=row.kind, role=row.role,
-    )
-    return TokenResponse(access_token=token, expires_in=expires_in,
-                          principal=new_principal.describe())
+    # The new token keeps the SAME `amr`: switching changes where you act, not how
+    # you proved who you are.
+    # token_version comes from the principal (what this request was authenticated with),
+    # NOT a fresh read: if the user's sessions were revoked a moment ago, the new token must
+    # be born revoked too.
+    user = SimpleNamespace(id=principal.user_id, email=principal.email,
+                           full_name=principal.full_name, token_version=principal.token_version)
+    return mint_session(user, row, amr=principal.amr,
+                        audit_detail={"switched_from": principal.org_id})
 
 
 @router.get("/rbac-matrix", dependencies=[Depends(requires("admin:manage_users"))])

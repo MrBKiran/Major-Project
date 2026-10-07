@@ -29,7 +29,7 @@ WESTERN_ADVISOR = "advisor@westernauto.example"      # Pune/Mumbai/Delhi centres
 SOUTHERN_ADVISOR = "advisor@southernmotors.example"  # Bengaluru/Chennai/Hyderabad
 OEM_ENGINEER = "quality@mahindra.example"
 OEM_MANAGER = "qmanager@mahindra.example"
-HERO_ANALYST = "analyst@hero.example"
+HERO_ENGINEER = "analyst@hero.example"   # mailbox kept; role is oem_quality_engineer
 OWNER_RAMESH = "ramesh.pawar@example.in"
 SECURITY = "soc@autosaarthi.io"
 ADMIN = "admin@autosaarthi.io"
@@ -123,7 +123,7 @@ def test_oem_sees_only_its_own_brand():
     # actually ran.
     assert vehicles, "Mahindra engineer should see the instrumented parc"
     assert {v["oem"] for v in vehicles} == {"Mahindra"}
-    assert HERO_VIN not in vins(HERO_ANALYST), "Hero saw a Mahindra vehicle"
+    assert HERO_VIN not in vins(HERO_ENGINEER), "Hero saw a Mahindra vehicle"
 
 
 def test_oem_cannot_read_a_rivals_defect_clusters():
@@ -131,7 +131,7 @@ def test_oem_cannot_read_a_rivals_defect_clusters():
     saw every OEM's failing batches and rates — the most commercially sensitive
     data in the system."""
     mahindra = get(OEM_ENGINEER, "/api/quality/clusters")
-    hero = get(HERO_ANALYST, "/api/quality/clusters")
+    hero = get(HERO_ENGINEER, "/api/quality/clusters")
     mahindra.raise_for_status()
     hero.raise_for_status()
 
@@ -150,10 +150,15 @@ def test_oem_capa_draft_is_brand_scoped():
     assert cluster is not None
     # The drafted ticket must name a batch this OEM actually builds.
     assert cluster["batch_id"].startswith("BATCH-"), cluster
-    # Hero's analyst is stopped a layer earlier: oem_analyst does not hold
-    # capa:draft at all, so the permission check refuses before scoping is even
-    # consulted. Both layers deny independently, which is the point.
-    assert get(HERO_ANALYST, "/api/quality/capa-draft").status_code == 403
+    # Hero's engineer holds the same capa:draft permission, so the permission
+    # layer no longer separates the two OEMs — the scoping layer has to. Hero may
+    # draft, but the ticket must never be built from Mahindra's cluster.
+    mahindra_keys = {c["cluster_key"] for c in
+                     get(OEM_ENGINEER, "/api/quality/clusters").json()["clusters"]}
+    hero_draft = get(HERO_ENGINEER, "/api/quality/capa-draft")
+    assert hero_draft.status_code == 200
+    hero_cluster = hero_draft.json().get("cluster")
+    assert hero_cluster is None or hero_cluster["cluster_key"] not in mahindra_keys
 
 
 def test_platform_admin_sees_everything():
@@ -181,8 +186,9 @@ def test_service_advisor_can_see_customer_identity():
 
 # ── permission enforcement ─────────────────────────────────────────────────
 
-def test_technician_cannot_read_customer_pii():
-    r = get("tech@westernauto.example", "/api/fleet")
+def test_security_analyst_cannot_read_customer_pii():
+    """Watching the agents does not require reading the customers they serve."""
+    r = get(SECURITY, "/api/fleet")
     r.raise_for_status()
     owners = {v.get("owner") for v in r.json()["vehicles"] if v.get("owner")}
     assert owners <= {"[redacted]"}

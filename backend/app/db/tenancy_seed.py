@@ -19,8 +19,7 @@ import hashlib
 from sqlalchemy import text
 
 from app.auth.principal import hash_password
-
-
+from app.config import settings
 from app.db.models import (
     FleetRoster,
     Membership,
@@ -71,10 +70,9 @@ USERS = [
     ("soc@autosaarthi.io", "Security Analyst", "ORG-PLATFORM", "security_analyst"),
     ("quality@mahindra.example", "Anjali Rao", "ORG-MAHINDRA", "oem_quality_engineer"),
     ("qmanager@mahindra.example", "Rajeev Menon", "ORG-MAHINDRA", "oem_quality_manager"),
-    ("analyst@hero.example", "Hero Analyst", "ORG-HERO", "oem_analyst"),
+    ("analyst@hero.example", "Hero Analyst", "ORG-HERO", "oem_quality_engineer"),
     ("advisor@westernauto.example", "Suresh Kulkarni", "ORG-WESTERN", "service_advisor"),
     ("manager@westernauto.example", "Meera Joshi", "ORG-WESTERN", "centre_manager"),
-    ("tech@westernauto.example", "Imran Shaikh", "ORG-WESTERN", "service_technician"),
     ("advisor@southernmotors.example", "Divya Nair", "ORG-SOUTHERN", "service_advisor"),
     ("ops@ramanlogistics.example", "Karthik Raman", "ORG-RAMAN", "fleet_manager"),
     # Same person, a second legitimate membership: manages the company fleet
@@ -92,6 +90,12 @@ FLEET_VINS = ["TN09ZZ1010", "TN09ZZ1011", "TN09ZZ1012", "TN09ZZ1013"]
 
 
 def seed_tenancy(reset: bool = False) -> None:
+    # Checked before anything else touches the database. This creates a
+    # platform_admin whose password is printed in the README.
+    if settings.is_production:
+        raise RuntimeError(
+            "refusing to seed demo accounts in production: they all use the published "
+            "demo password. Create real accounts instead.")
     init_db()
     with SessionLocal() as session:
         if reset:
@@ -119,10 +123,15 @@ def seed_tenancy(reset: bool = False) -> None:
         for vin in FLEET_VINS:
             session.merge(FleetRoster(org_id="ORG-RAMAN", vin=vin))
 
-        pw = hash_password(DEMO_PASSWORD)
+        # One hash PER ACCOUNT (its own random salt), not one shared by all: the
+        # demo password is the same, but the table should not say so to anyone who
+        # can read it. A person listed under two orgs is still one account.
+        hashes: dict[str, str] = {}
         for email, full_name, org_id, role in USERS:
             uid = user_id_for(email)
-            session.merge(User(id=uid, email=email.lower(), password_hash=pw,
+            if email.lower() not in hashes:
+                hashes[email.lower()] = hash_password(DEMO_PASSWORD)
+            session.merge(User(id=uid, email=email.lower(), password_hash=hashes[email.lower()],
                                 full_name=full_name, is_active=True))
             session.merge(Membership(user_id=uid, org_id=org_id, role=role))
         session.flush()

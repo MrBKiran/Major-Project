@@ -38,16 +38,16 @@ UEBA security layer.
 | Mfg Quality / RCA-CAPA | ✅ Fisher exact + Benjamini-Hochberg FDR clustering, TF-IDF CAPA retrieval, grounded 5-Why with citations — rediscovers the hidden ground-truth cluster |
 | LLM router | ✅ `backend/app/llm/router.py` — Groq → Gemini → DEMO_MODE fixtures; runs with no API keys |
 | Red team (all 5 attacks) | ✅ 5/5 blocking correctly; hash chain verifies |
-| **Multi-tenant RBAC (humans/orgs)** | ✅ `config/access_policy.yaml` + `backend/app/auth/` — 11 roles across 5 org kinds, row scoping + PII redaction, **18 isolation tests** |
-| Auth | ✅ JWT bearer, PBKDF2-HMAC-SHA256 passwords, membership re-checked per request so revocation is immediate |
+| **Multi-tenant RBAC (humans/orgs)** | ✅ `config/access_policy.yaml` + `backend/app/auth/` — 8 roles across 5 org kinds, row scoping + PII redaction, **18 isolation tests** |
+| **Authentication** | ✅ Email + password, **Google**, **phone number + one-time code** (owners), **TOTP MFA** with recovery codes; per-role sign-in methods; JWT with `iss`/`aud`/`amr`/`scp`, revoked instantly via `token_version`; authenticated WebSocket; fail-closed signing key — **[docs/authentication.md](docs/authentication.md)**, **586 tests / 95% coverage**, evidence in [`docs/authentication.tdd.md`](docs/authentication.tdd.md) |
 | Principal access log | ✅ `backend/app/auth/audit.py` — who read/changed what, incl. **denied** attempts; queryable by subject ("who touched this VIN") |
 | Rate limiting | ✅ `backend/app/auth/ratelimit.py` — login brute-force (per account + per IP, failures only) and per-principal API budget |
 | Schema migrations | ✅ Alembic (`backend/migrations/`) — Timescale hypertable objects excluded from autogenerate |
 | Pagination | ✅ offset+limit, hard-capped at 200, on every list endpoint (`app/api_common.py`) |
 | Async agent-run queue | ✅ `backend/app/jobs.py` — `POST /runs/trigger` returns 202+job id (or `wait:true` for the demo); Postgres-backed, survives client disconnect, orphaned jobs marked `interrupted` on restart |
 | Structured logging + correlation ids | ✅ `backend/app/observability.py` — every request gets an id threaded into JSON logs, response headers, and (soon) agent-run attribution |
-| Health checks | ✅ `/api/health/live` (dependency-free), `/api/health/ready` (503 if DB/models down), `/api/health` (human detail, no internals leaked) |
-| CORS / secrets | ✅ configurable via `CORS_ORIGINS` / `JWT_SECRET` env vars, not hardcoded — see `.env.example` |
+| Health checks | ✅ `/api/health/live` (dependency-free), `/api/health/ready` (503 if DB/models down), `/api/health` — all three say up/down and nothing else; detail is behind `ueba:read` at `/api/health/detail` |
+| CORS / secrets | ✅ configurable via `CORS_ORIGINS` / `JWT_SECRET` env vars, not hardcoded — production **refuses to start** without a strong `JWT_SECRET`; see `.env.example` |
 | Global error handling | ✅ unhandled exceptions logged with request id, generic body returned — no internals leak to the client |
 | JWT revocation | ✅ `users.token_version`, checked every request alongside the existing membership recheck — `POST /api/auth/logout` (self, all sessions) and `POST /api/auth/users/{id}/revoke-sessions` (admin-forced); **8 tests** in `test_auth_revocation.py` |
 | OpenAPI docs | ✅ app description, every endpoint tagged (`ueba`/`redteam`/`tools` were missing) — `/docs` is now a complete, navigable surface |
@@ -105,6 +105,31 @@ customer database.
 ```bash
 cd backend && python -m pytest tests/test_tenancy.py -q
 ```
+
+### Authentication
+
+Three ways in, one shared funnel, an optional second factor. Which methods each role may use is in
+`config/access_policy.yaml` (`login_methods`, `mfa_required`); which the deployment offers comes from
+the environment. Full guide, configuration and known limitations: **[docs/authentication.md](docs/authentication.md)**.
+
+| Method | Roles | Needs |
+|---|---|---|
+| Email + password | all | — |
+| Google | all (pre-provisioned users only) | `GOOGLE_CLIENT_ID` |
+| Phone number + code | `vehicle_owner` only | `SMS_PROVIDER` (`console` prints the code in the backend log for development) |
+| Authenticator app (TOTP) | roles with `mfa_required` | `MFA_ENFORCEMENT=1` to require it |
+
+```bash
+cd backend
+python -m pytest tests -q                                   # 586 tests; auth suite uses its own throwaway database
+python -m pytest tests -q --cov=app.auth --cov-report=term  # 95% on the auth code
+python -m app.auth.manage create-user --email a@b.com --name "A B" --org ORG-RAMAN --role fleet_manager
+alembic upgrade head                                        # identities, OTP, MFA tables; retires two unused roles
+```
+
+The suite never touches the demo database: it creates and seeds `autosaarthi_test` per run
+(and refuses to run against a non-local host). `tests/test_tenancy.py` and
+`tests/test_auth_revocation.py` are the exceptions — they exercise a live server on `:8010`.
 
 ### Before every rehearsal and the real demo
 

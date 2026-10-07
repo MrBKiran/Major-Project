@@ -12,9 +12,11 @@ Split deliberately, because orchestrators ask two different questions:
                        dependencies it cannot work without, and returns 503 when
                        one is down so the load balancer stops sending requests.
 
-  /api/health        — human-facing detail. Kept unauthenticated but deliberately
-                       thin: it reports whether a dependency is reachable, never
-                       hostnames, versions, or connection strings.
+  /api/health        — the public summary. Unauthenticated, so it says only whether
+                       each dependency is up or down: no latencies, no tool or agent
+                       names, no error classes, nothing about how auth is configured.
+
+  /api/health/detail — everything the public summary leaves out, behind `ueba:read`.
 """
 
 from __future__ import annotations
@@ -22,9 +24,11 @@ from __future__ import annotations
 import asyncio
 import time
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import text
 
+from app.auth.deps import requires
+from app.auth.keys import signing_key_source
 from app.config import settings
 from app.db.session import engine
 
@@ -89,20 +93,41 @@ async def ready(response: Response) -> dict:
     required_ok = db["ok"] and models["ok"]
     if not required_ok:
         response.status_code = 503
+    # Up or down only — an orchestrator needs the status code, and a latency, an error class
+    # or a list of missing model files tells an unauthenticated caller how to aim.
     return {"status": "ready" if required_ok else "not_ready",
-            "checks": {"database": db, "ml_artifacts": models}}
+            "checks": {"database": {"ok": db["ok"]}, "ml_artifacts": {"ok": models["ok"]}}}
 
 
-@router.get("")
-async def health(response: Response) -> dict:
-    from app.tools.registry import list_tools
-    from app.ueba.policy import engine as ueba
-
-    db, mqtt, models = await asyncio.gather(
+async def _run_checks() -> list[dict]:
+    return await asyncio.gather(
         asyncio.to_thread(_check_database),
         asyncio.to_thread(_check_mqtt),
         asyncio.to_thread(_check_models),
     )
+
+
+@router.get("")
+async def health(response: Response) -> dict:
+    db, mqtt, models = await _run_checks()
+    ok = db["ok"] and models["ok"]
+    if not ok:
+        response.status_code = 503
+    return {
+        "ok": ok,
+        # up/down and nothing else: an error class, a latency or a missing-file
+        # list tells an unauthenticated caller how to aim.
+        "checks": {"database": {"ok": db["ok"]}, "mqtt": {"ok": mqtt["ok"]},
+                   "ml_artifacts": {"ok": models["ok"]}},
+    }
+
+
+@router.get("/detail", dependencies=[Depends(requires("ueba:read"))])
+async def health_detail(response: Response) -> dict:
+    from app.tools.registry import list_tools
+    from app.ueba.policy import engine as ueba
+
+    db, mqtt, models = await _run_checks()
     ok = db["ok"] and models["ok"]
     if not ok:
         response.status_code = 503
@@ -112,7 +137,7 @@ async def health(response: Response) -> dict:
         "tools_registered": len(list_tools()),
         "agents": list(ueba.agents.keys()),
         "ueba": "armed",
-        # Surfaced so a deployment running on the built-in dev signing key is
-        # visible from the outside instead of only in a startup log nobody read.
-        "auth": {"jwt_secret_configured": bool(settings.jwt_secret)},
+        # Whether the signing key was configured or generated — visible to
+        # operators here rather than to everyone on the public summary.
+        "auth": {"signing_key": signing_key_source(), "environment": settings.environment},
     }

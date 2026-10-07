@@ -17,6 +17,7 @@ import ServiceOps from "./pages/ServiceOps.jsx";
 import SecurityConsole from "./pages/SecurityConsole.jsx";
 import InCarConsole from "./pages/InCarConsole.jsx";
 import OwnerApp from "./pages/OwnerApp.jsx";
+import Account from "./pages/Account.jsx";
 import MobileApp from "./MobileApp.jsx";
 
 const ICONS = {
@@ -105,8 +106,9 @@ function Shell() {
   const { principal } = useAuth();
   const visibleTabs = TABS.filter((t) => tabVisible(t, principal.permissions, principal));
   const [tab, setTab] = useState(visibleTabs[0]?.id ?? null);
-  const active = TABS.find((t) => t.id === tab);
-  const Page = tab ? PAGES[tab] : null;
+  // "account" is opened from the account menu, not from the tab bar, so it is not in TABS.
+  const active = tab === "account" ? { id: "account" } : TABS.find((t) => t.id === tab);
+  const Page = tab === "account" ? Account : tab ? PAGES[tab] : null;
 
   const btnRefs = useRef({});
   const [indicator, setIndicator] = useState(null);
@@ -165,7 +167,7 @@ function Shell() {
             )}
           </nav>
 
-          <AccountMenu />
+          <AccountMenu onAccount={() => setTab("account")} />
         </div>
       </header>
 
@@ -191,7 +193,7 @@ function Shell() {
   );
 }
 
-function AccountMenu() {
+function AccountMenu({ onAccount }) {
   const { principal, logout, switchMembership } = useAuth();
   const [open, setOpen] = useState(false);
   const [memberships, setMemberships] = useState(null);
@@ -270,6 +272,12 @@ function AccountMenu() {
                 </button>
               ))}
               <div className="my-1.5 border-t border-edge" />
+              <button
+                onClick={() => { setOpen(false); onAccount(); }}
+                className="w-full px-3 py-2 text-left text-[12px] text-slate-300 transition-colors duration-150 hover:bg-ink-700"
+              >
+                Account &amp; security
+              </button>
               <button
                 onClick={logout}
                 className="w-full px-3 py-2 text-left text-[12px] text-p1 transition-colors duration-150 hover:bg-p1/10"

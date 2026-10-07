@@ -11,9 +11,14 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text,
+    UniqueConstraint, event,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from app.auth.phone import normalize_phone
 
 
 class Base(DeclarativeBase):
@@ -98,6 +103,126 @@ class Membership(Base):
     role: Mapped[str] = mapped_column(String(48), primary_key=True)
 
 
+class UserIdentity(Base):
+    """One external way of proving to be a user: a Google account or a phone number.
+
+    See app/auth/identities.py. The (provider, subject) pair is unique across the
+    whole table — an identifier can belong to only one user — and `subject` is the
+    provider's stable id (the Google `sub`, never the email), or the E.164 number.
+    """
+
+    __tablename__ = "user_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject", name="uq_user_identities_provider_subject"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(16))
+    subject: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+    last_used_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+
+
+class OtpChallenge(Base):
+    """One request for a phone sign-in code. See app/auth/otp.py.
+
+    The code itself is never stored — only a keyed hash bound to the number — and a
+    row is written even for numbers that belong to no one (`eligible` false), so a
+    request costs and leaves the same whether or not the number is real.
+    """
+
+    __tablename__ = "otp_challenges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    phone_e164: Mapped[str] = mapped_column(String(16), index=True)
+    code_hmac: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+    # Indexed: every request runs a housekeeping DELETE keyed on it.
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    consumed_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    eligible: Mapped[bool] = mapped_column(Boolean)
+    requested_ip: Mapped[str | None] = mapped_column(String(64), default=None)
+
+
+class UserMfa(Base):
+    """A user's TOTP second factor. See app/auth/mfa.py.
+
+    One row per user. The secret is ENCRYPTED (Fernet) — a database dump alone must
+    not let anyone generate someone's codes — and enrolment is not in force until
+    `confirmed_at` is set: a row without it is a pending enrolment that changes nothing
+    about how the user signs in.
+    """
+
+    __tablename__ = "user_mfa"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    secret_enc: Mapped[str] = mapped_column(String(255))
+    confirmed_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    # The last 30-second step a code was accepted for. A code is valid once: anything
+    # at or before this step is a replay.
+    last_used_step: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+
+
+class MfaRecoveryCode(Base):
+    """One single-use recovery code, for a user who has lost their authenticator.
+
+    Only a keyed hash is stored; the plaintext is shown once at enrolment.
+    """
+
+    __tablename__ = "mfa_recovery_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    code_mac: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+    used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class RetiredMembership(Base):
+    """A membership moved or removed when a role was retired from the policy.
+
+    Kept so the change is both auditable ("who lost what, and why") and
+    reversible: a role dropped from access_policy.yaml but still present in
+    `memberships` is an account in an undefined state, so those rows have to be
+    migrated — and a migration that destroys access data with no way back is one
+    nobody should have to run. Deliberately no foreign keys: this is a
+    historical record and must outlive whatever it describes.
+    """
+
+    __tablename__ = "retired_memberships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    org_id: Mapped[str] = mapped_column(String(32))
+    role: Mapped[str] = mapped_column(String(48))          # the retired role
+    replaced_by: Mapped[str | None] = mapped_column(String(48), default=None)
+    # rehomed: the row's role was changed in place. removed: the row was deleted
+    # (no replacement exists, or the user already held the replacement).
+    action: Mapped[str] = mapped_column(String(12))
+    deactivated_user: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[str] = mapped_column(String(240))
+    retired_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+
+
 class FleetRoster(Base):
     """VINs belonging to a fleet_operator org."""
 
@@ -175,6 +300,11 @@ class Customer(Base):
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), default=None)
     name: Mapped[str] = mapped_column(String(128))
     phone: Mapped[str | None] = mapped_column(String(32), default=None)
+    # `phone` as E.164, or NULL if it is not a number that can receive an SMS.
+    # Derived — never set by hand: the listeners below keep it in step with
+    # `phone`. Phone sign-in looks owners up by this column, indexed, rather than
+    # normalising every row on every request.
+    phone_e164: Mapped[str | None] = mapped_column(String(16), default=None, index=True)
     email: Mapped[str | None] = mapped_column(String(128), default=None)
     language: Mapped[str] = mapped_column(String(16), default="english")
     pref_time_window: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=None)
@@ -182,6 +312,14 @@ class Customer(Base):
     pref_center_id: Mapped[str | None] = mapped_column(String(16), default=None)
     consent_voice: Mapped[bool] = mapped_column(Boolean, default=True)
     consent_push: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+@event.listens_for(Customer, "before_insert")
+@event.listens_for(Customer, "before_update")
+def _sync_phone_e164(mapper, connection, customer: Customer) -> None:
+    # Only ORM writes pass through here; a raw INSERT/UPDATE of `phone` leaves
+    # phone_e164 stale, and the rest of the code treats phone_e164 as the truth.
+    customer.phone_e164 = normalize_phone(customer.phone)
 
 
 class Telemetry(Base):

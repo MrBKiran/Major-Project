@@ -54,7 +54,17 @@ reportlab==4.2.5
 # ── ueba ──────────────────────────────────────────────────────────────────
 filelock==3.16.1                     # cross-process lock for the audit hash chain
 
+# ── auth ──────────────────────────────────────────────────────────────────
+PyJWT==2.10.1                        # signed session tokens (was imported but never declared)
+email-validator==2.3.0               # pydantic EmailStr on the login form
+cryptography==50.0.0                 # Fernet: TOTP secrets are encrypted at rest
+pyotp==2.10.0                        # TOTP second factor (RFC 6238)
+phonenumbers==9.0.39                 # E.164 normalisation for phone sign-in
+google-auth==2.56.3                  # verifies Google ID tokens (signature, audience, expiry)
+requests==2.34.2                     # the transport google-auth uses to fetch Google's signing keys
+
 # ── dev ───────────────────────────────────────────────────────────────────
 pytest==8.3.4
 pytest-asyncio==0.25.0
+pytest-cov==7.1.0
 ruff==0.8.4

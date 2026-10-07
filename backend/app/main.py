@@ -22,10 +22,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api_auth import router as auth_router
+from app.api_signin import router as signin_router
+from app.api_mfa import router as mfa_router
 from app import jobs
 from app.api_health import router as health_router
 from app.observability import CorrelationMiddleware, configure_logging
+from app.security_headers import SecurityHeadersMiddleware
+from app.auth import ws as ws_auth
 from app.auth.deps import requires
+from app.auth.keys import validate_auth_config
+from app.auth.mfa import validate_mfa_config
+from app.auth.sms import validate_sms_config
 from app.api_fleet import router as fleet_router
 from app.api_chat import router as chat_router
 from app.config import settings
@@ -40,15 +47,12 @@ from app.ueba.policy import engine
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_logging()
+    # First, before anything with side effects starts: in production an unusable
+    # signing key raises here and the app never comes up.
+    for warning in [*validate_auth_config(), *validate_sms_config(), *validate_mfa_config()]:
+        logging.getLogger("autosaarthi").warning(warning)
     guard.install()                       # bind UEBA into the tool registry
     engine.reload()
-    if not settings.jwt_secret:
-        # Loud on purpose. A deployment running on the shared dev key means
-        # anyone can mint a platform_admin token for themselves.
-        logging.getLogger("autosaarthi").warning(
-            "JWT_SECRET is unset - using the built-in DEV signing key. "
-            "Set JWT_SECRET before exposing this beyond localhost."
-        )
     await jobs.start()
     await bus.emit({"type": "system", "msg": "AutoSaarthi online",
                     "tools": len(list_tools()), "agents": len(engine.agents)})
@@ -79,8 +83,11 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 app.add_middleware(CorrelationMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(health_router)     # live / ready / detail
 app.include_router(auth_router)       # login / me / rbac matrix
+app.include_router(signin_router)     # Google, phone code
+app.include_router(mfa_router)        # second factor
 app.include_router(fleet_router)      # Slides 1-4 read APIs
 app.include_router(chat_router)       # live customer chat — turn-by-turn Customer Engagement Agent
 
@@ -113,13 +120,39 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 @app.websocket("/ws/events")
 async def ws_events(ws: WebSocket):
+    """Live event stream for the security console.
+
+    Carries red-team runs, quarantines and job activity, so it needs the same
+    `ueba:read` the console's REST endpoints need. The credential is the first
+    message on the socket (see app/auth/ws.py); nothing is sent before it checks
+    out, and an open stream re-checks it so a revoked token does not keep
+    listening until it expires.
+    """
     await ws.accept()
+    token = await ws_auth.authenticate(ws, "ueba:read")
+    if token is None:
+        return
+
     q = bus.subscribe()
+    loop = asyncio.get_running_loop()
+    next_check = loop.time() + settings.ws_recheck_s
     try:
+        await ws.send_text(json.dumps({"type": "auth_ok"}))
         for ev in bus.replay(100):
             await ws.send_text(json.dumps(ev, default=str))
         while True:
-            ev = await q.get()
+            remaining = next_check - loop.time()
+            if remaining <= 0:
+                code = ws_auth.revalidate(token, "ueba:read")
+                if code is not None:
+                    await ws_auth.close_with(ws, code)
+                    return
+                next_check = loop.time() + settings.ws_recheck_s
+                continue
+            try:
+                ev = await asyncio.wait_for(q.get(), timeout=remaining)
+            except asyncio.TimeoutError:
+                continue                       # the deadline passed: loop back and recheck
             await ws.send_text(json.dumps(ev, default=str))
     except WebSocketDisconnect:
         pass

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { api } from "../api.js";
+import { api, getToken } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { Badge, Card, Empty, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
@@ -35,10 +35,19 @@ export default function SecurityConsole() {
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${proto}//${window.location.host}/ws/events`);
-    ws.onopen = () => setConnected(true);
+    // The server accepts the socket but sends nothing until it has the
+    // credential, and a browser cannot set an Authorization header on a
+    // WebSocket — so the token is the first message. (Not a query parameter:
+    // URLs end up in access logs.) "Live" only lights once the server says the
+    // token was accepted; a refusal closes the socket with 4401/4403.
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: getToken() }));
     ws.onclose = () => setConnected(false);
     ws.onmessage = (ev) => {
       const payload = JSON.parse(ev.data);
+      if (payload.type === "auth_ok") {
+        setConnected(true);
+        return;
+      }
       setLive((prev) => [payload, ...prev].slice(0, 40));
     };
     return () => ws.close();

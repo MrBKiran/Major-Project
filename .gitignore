@@ -4,12 +4,16 @@ __pycache__/
 .env
 .pytest_cache/
 .ruff_cache/
+.coverage
 node_modules/
 frontend/dist/
 data/raw/*
 data/processed/*
 data/chroma/
 data/audit/*.jsonl
+# Generated development signing key (app/auth/keys.py) — a secret, never committed.
+data/.jwt_dev_key
+data/.jwt_dev_key.*.tmp
 ml/artifacts/*.joblib
 demo/audio/*.wav
 !**/.gitkeep

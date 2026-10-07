@@ -3,6 +3,16 @@
  * what may they do" — pages read `principal.permissions` to decide what to
  * show rather than hardcoding role names, so a new role or permission on the
  * backend doesn't require finding every place the frontend guessed at it.
+ *
+ * Every way of signing in (password, Google, phone code) ends in the same place on
+ * the backend, and so ends in the same place here: `handleSignIn` turns whatever the
+ * server answered into one of four outcomes —
+ *
+ *   { ok: true }                    signed in
+ *   { needsChoice, memberships }    the account holds several roles; pick one
+ *   { mfa: { token } }              a second factor is owed (HTTP 202)
+ *   { enroll: true }                the role requires a second factor that is not set
+ *                                   up yet; the token held is enrolment-only
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -44,33 +54,74 @@ export function AuthProvider({ children }) {
     else setStatus("anon");
   }, [loadMe]);
 
-  const login = useCallback(async (email, password, orgId, role) => {
-    setError(null);
-    try {
-      const res = await api.post("/api/auth/login", {
-        email,
-        password,
-        org_id: orgId,
-        role,
-      });
-      setToken(res.access_token);
-      setPrincipal(res.principal);
-      setStatus("authed");
-      return { ok: true };
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 400 && e.body?.memberships) {
-        // e.body is the unwrapped `detail` value (see api.js), so this is
-        // {"error": "...", "memberships": [...]} — the shape the backend's
-        // 400 actually sends, not the outer {"detail": ...} envelope.
-        // Not a failure — the account holds several roles and login needs a
-        // choice. Surfaced to the caller rather than treated as an error so
-        // the login form can render an org picker.
-        return { ok: false, needsChoice: true, memberships: e.body.memberships };
-      }
-      setError(e.message || "login failed");
-      return { ok: false, error: e.message };
-    }
+  /** Adopt a finished session (a TokenResponse). */
+  const completeSession = useCallback((res) => {
+    setToken(res.access_token);
+    setPrincipal(res.principal);
+    setStatus("authed");
   }, []);
+
+  /** Turn a sign-in response into one of the outcomes described above. */
+  const handleSignIn = useCallback(
+    (res) => {
+      if (res.mfa_required) return { ok: false, mfa: { token: res.mfa_token } };
+      if (res.next_step === "mfa_enroll") {
+        // Held so the enrolment calls carry it — but NOT adopted as a session: it can
+        // do nothing else, and a page reload should not resurrect a half sign-in.
+        setToken(res.access_token);
+        return { ok: false, enroll: true };
+      }
+      completeSession(res);
+      return { ok: true };
+    },
+    [completeSession],
+  );
+
+  /** Wrap a sign-in call: the 400 that means "pick a role" is a step, not an error. */
+  const attempt = useCallback(
+    async (call) => {
+      setError(null);
+      try {
+        return handleSignIn(await call());
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 400 && e.body?.memberships) {
+          // e.body is the unwrapped `detail` value (see api.js), so this is
+          // {"error": "...", "memberships": [...]} — the shape the backend's
+          // 400 actually sends, not the outer {"detail": ...} envelope.
+          return { ok: false, needsChoice: true, memberships: e.body.memberships };
+        }
+        const message = e.message || "sign-in failed";
+        setError(message);
+        return { ok: false, error: message, retryAfter: e.retryAfter };
+      }
+    },
+    [handleSignIn],
+  );
+
+  const login = useCallback(
+    (email, password, orgId, role) =>
+      attempt(() => api.post("/api/auth/login", { email, password, org_id: orgId, role })),
+    [attempt],
+  );
+
+  const loginWithGoogle = useCallback(
+    (credential, orgId, role) =>
+      attempt(() => api.post("/api/auth/google", { credential, org_id: orgId, role })),
+    [attempt],
+  );
+
+  const verifyPhoneCode = useCallback(
+    (phone, code, orgId, role) =>
+      attempt(() => api.post("/api/auth/otp/verify", { phone, code, org_id: orgId, role })),
+    [attempt],
+  );
+
+  /** Step two of a sign-in that owes a second factor. `code` is an authenticator or recovery code. */
+  const verifyMfa = useCallback(
+    (mfaToken, code) =>
+      attempt(() => api.post("/api/auth/mfa/verify", { mfa_token: mfaToken, code })),
+    [attempt],
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -107,8 +158,13 @@ export function AuthProvider({ children }) {
   );
 
   const value = useMemo(
-    () => ({ status, principal, error, login, logout, switchMembership, can, refresh: loadMe }),
-    [status, principal, error, login, logout, switchMembership, can, loadMe],
+    () => ({
+      status, principal, error, can,
+      login, loginWithGoogle, verifyPhoneCode, verifyMfa, completeSession,
+      logout, switchMembership, refresh: loadMe,
+    }),
+    [status, principal, error, can, login, loginWithGoogle, verifyPhoneCode, verifyMfa,
+     completeSession, logout, switchMembership, loadMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

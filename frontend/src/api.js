@@ -73,6 +73,10 @@ async function request(path, { method = "GET", body, params } = {}) {
     const detail = payload && typeof payload === "object" ? payload.detail : payload;
     const err = new ApiError(res.status, detail ?? res.statusText, detail ?? payload);
     err.requestId = requestId;
+    // Seconds to wait, on a 429 — the OTP and sign-in screens show a countdown
+    // instead of a bare "too many requests".
+    const retryAfter = Number(res.headers.get("Retry-After"));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) err.retryAfter = retryAfter;
     throw err;
   }
   return payload;

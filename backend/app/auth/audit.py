@@ -38,6 +38,11 @@ AUDITED = {
     "quality.read", "capa.draft", "capa.dispatch",
     "agent.trigger", "console.demo", "ueba.read", "ueba.release", "redteam.run",
     "auth.login", "auth.login_failed", "auth.revoke_sessions",
+    "auth.identity_linked", "auth.otp_requested",
+    "auth.password_changed", "auth.password_change_failed",
+    "auth.mfa_enrolled", "auth.mfa_verified", "auth.mfa_failed", "auth.mfa_disabled",
+    "auth.mfa_reset", "auth.mfa_recovery_regenerated",
+    "auth.user_created", "auth.user_updated",
 }
 
 
