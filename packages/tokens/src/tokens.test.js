@@ -18,7 +18,7 @@ describe("modes", () => {
 });
 
 // Every text step carries 11–13px copy somewhere, so all of them owe 4.5:1.
-const TEXT = ["fgStrong", "fg", "fgSecondary", "fgTertiary", "fgMuted", "fgSubtle", "fgDevice", "fgDeviceFaint"];
+const TEXT = ["fgStrong", "fg", "fgSecondary", "fgTertiary", "fgMuted", "fgSubtle"];
 const SURFACES = ["page", "panel", "card"];
 
 describe.each([["day", day], ["night", night]])("%s contrast", (_, mode) => {
@@ -33,6 +33,57 @@ describe.each([["day", day], ["night", night]])("%s contrast", (_, mode) => {
   it("pill ink clears 4.5:1 on its pill", () => {
     expect(contrast(mode.pillInk, mode.pillBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(mode.amberInk, mode.amberBg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // "Healthy · agent watching" and "Confirmed" are 11px. In #1f9d55 they were
+  // 3.5:1 on white — the colour of the brand, not of legible small text.
+  it.each(["page", "panel", "card", "okBg"])("positive text clears 4.5:1 on %s", (bg) => {
+    expect(contrast(mode.positive, mode[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("the driving alert band keeps its text legible", () => {
+    expect(contrast(mode.fg, mode.alertBg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("status bar and dock text clear 4.5:1 on the chrome", () => {
+    expect(contrast(mode.fgMuted, mode.chrome)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(mode.fgSubtle, mode.chrome)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("map labels clear 4.5:1 on the hatched ground and its stripes", () => {
+    expect(contrast(mode.fgSubtle, mode.hatchGround)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(mode.fgSubtle, mode.hatch)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Seen on the phone at night: the owner's "All service history" link in
+  // accentInk was dark red on near-black, about 3.2:1.
+  it.each(["page", "panel", "card"])("link text clears 4.5:1 on %s", (bg) => {
+    expect(contrast(mode.link, mode[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("button text clears 4.5:1 on a neutral control", () => {
+    expect(contrast(mode.fg, mode.control)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("text on the brand colour", () => {
+  // White on the deck's orange is 3.4:1. WCAG lets large text (24px, or ~18.7px
+  // bold) off with 3:1; the chat bubbles, Send and the head unit's Book button
+  // are 13.5–17px — so white text sits on accentDeep, everywhere.
+  it("white on accentDeep clears 4.5:1", () => {
+    expect(contrast(color.onAccent, color.accentDeep)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(["page", "panel", "card"])("orange text (accentInk) clears 4.5:1 on %s", (bg) => {
+    expect(contrast(color.accentInk, day[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("the plain accent as text would not — 2.9:1 on the page", () => {
+    expect(contrast(color.accent, day.page)).toBeLessThan(3);
+  });
+
+  it("white on the plain accent would not, which is why it is not used for text", () => {
+    expect(contrast(color.onAccent, color.accent)).toBeLessThan(4.5);
   });
 });
 
@@ -75,18 +126,19 @@ describe("tokens.css", () => {
     expect(committed).toBe(css);
   });
 
-  // The Tailwind names the pages use today must keep today's values: the token
-  // source arrives without changing a pixel, and merging lands later, reviewed.
+  // Phase 1 kept ink-*, slate-* and edge so the token source could land without
+  // a pixel changing; Phase 2 moved every page to the semantic names and
+  // retired them. slate-* in particular was Tailwind's own scale inverted —
+  // a trap for anyone who knows Tailwind.
+  it("no longer defines the retired legacy names", () => {
+    expect(css).not.toMatch(/--color-(ink|slate)-\d00:/);
+    expect(css).not.toMatch(/--color-edge:/);
+  });
+
   it.each([
-    ["--color-ink-900", "#eceef1"], ["--color-ink-800", "#ffffff"], ["--color-ink-700", "#f3f4f6"],
-    ["--color-ink-600", "#e4e7ea"], ["--color-edge", "#d7dade"],
-    ["--color-slate-100", "#0f1115"], ["--color-slate-200", "#16181d"], ["--color-slate-300", "#2f343c"],
-    ["--color-slate-400", "#3c424b"], ["--color-slate-500", "#4e5560"], ["--color-slate-600", "#646a74"],
-    ["--color-slate-700", "#a8aeb6"],
-    ["--color-p1", "#d8391a"], ["--color-p2", "#b26a00"], ["--color-p3", "#0b7fc4"], ["--color-ok", "#1f9d55"],
-    ["--color-accent", "#ff4a23"], ["--color-accent-deep", "#d13c14"],
-    ["--color-p1-ink", "#b32f13"], ["--color-p2-ink", "#8a5200"], ["--color-p3-ink", "#0a6394"],
-    ["--color-ok-ink", "#15703a"], ["--color-accent-ink", "#b8320f"],
+    ["--color-surface-page", "#eceef1"], ["--color-surface-card", "#ffffff"],
+    ["--color-fg-muted", "#4e5560"], ["--color-border", "#d7dade"],
+    ["--color-p1-ink", "#b32f13"], ["--color-accent-deep", "#d13c14"],
   ])("keeps %s at %s", (name, value) => {
     expect(css).toContain(`${name}: ${value};`);
   });

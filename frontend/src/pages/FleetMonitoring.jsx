@@ -14,7 +14,7 @@ import {
 import { api, ApiError } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { formatDate } from "@autosaarthi/core";
-import { Badge, Card, CHART, Empty, SeverityPill, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
+import { Badge, Card, CHART, Dialog, Empty, SeverityPill, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
 export default function FleetMonitoring() {
   const { can } = useAuth();
@@ -78,9 +78,9 @@ export default function FleetMonitoring() {
           className="overflow-hidden"
         >
           <div className="-mx-5 -mb-5 max-h-[560px] overflow-y-auto">
-            <table className="w-full text-[13px]">
-              <thead className="sticky top-0 bg-ink-800">
-                <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wider text-slate-500">
+            <table className="w-full text-body-sm">
+              <thead className="sticky top-0 bg-surface-card">
+                <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
                   <th className="px-5 pb-2 font-medium">Vehicle</th>
                   <th className="pb-2 font-medium">Issue</th>
                   <th className="pb-2 pr-5 text-right font-medium">Severity</th>
@@ -91,28 +91,28 @@ export default function FleetMonitoring() {
                   <tr
                     key={v.vin}
                     onClick={() => setSelected(v.vin)}
-                    className={`cursor-pointer border-b border-edge/50 transition last:border-0 hover:bg-ink-700/40 ${
-                      selected === v.vin ? "bg-ink-700 shadow-[inset_3px_0_0_0_var(--color-accent)]" : ""
+                    className={`cursor-pointer border-b border-border/50 transition last:border-0 hover:bg-surface-inset/40 ${
+                      selected === v.vin ? "bg-surface-inset shadow-[inset_3px_0_0_0_var(--color-accent)]" : ""
                     }`}
                   >
                     <td className="px-5 py-2.5">
-                      <div className="font-medium text-slate-200">{v.model}</div>
-                      <div className="font-mono text-[11px] text-slate-500">
+                      <div className="font-medium text-fg">{v.model}</div>
+                      <div className="font-mono text-caption text-fg-muted">
                         {v.vin} · {v.city}
                       </div>
                     </td>
-                    <td className="py-2.5 text-slate-400">
+                    <td className="py-2.5 text-fg-tertiary">
                       {v.component ? (
                         <>
                           {v.component.replace(/_/g, " ")}
                           {v.days_to_failure != null && (
-                            <span className="ml-1.5 text-[11px] text-slate-600">
+                            <span className="ml-1.5 text-caption text-fg-subtle">
                               ~{v.days_to_failure}d
                             </span>
                           )}
                         </>
                       ) : (
-                        <span className="text-slate-600">—</span>
+                        <span className="text-fg-subtle">—</span>
                       )}
                     </td>
                     <td className="py-2.5 pr-5 text-right">
@@ -163,12 +163,12 @@ function ModelPerformance() {
       <div className="grid gap-5 lg:grid-cols-2">
         {m1 && (
           <div>
-            <h3 className="text-[12px] font-semibold text-slate-300">
-              M1 — health classifier <span className="font-normal text-slate-500">({m1.n_train} train / {m1.n_test} test)</span>
+            <h3 className="text-label font-semibold text-fg-secondary">
+              M1 — health classifier <span className="font-normal text-fg-muted">({m1.n_train} train / {m1.n_test} test)</span>
             </h3>
-            <table className="mt-2.5 w-full text-[12px]">
+            <table className="mt-2.5 w-full text-label">
               <thead>
-                <tr className="border-b border-edge text-left text-[10.5px] uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
                   <th className="pb-1.5 font-medium">Model</th>
                   <th className="pb-1.5 text-right font-medium">Accuracy</th>
                   <th className="pb-1.5 text-right font-medium">F1 (macro)</th>
@@ -176,19 +176,19 @@ function ModelPerformance() {
               </thead>
               <tbody>
                 {m1.comparison_table.map((r) => (
-                  <tr key={r.model} className="border-b border-edge/50 last:border-0">
-                    <td className="py-1.5 text-slate-300">
+                  <tr key={r.model} className="border-b border-border/50 last:border-0">
+                    <td className="py-1.5 text-fg-secondary">
                       {r.model}
                       {r.model === m1.model && <Badge tone="accent">production</Badge>}
                     </td>
-                    <td className="num py-1.5 text-right text-slate-400">{(r.accuracy * 100).toFixed(1)}%</td>
-                    <td className="num py-1.5 text-right text-slate-400">{r.f1_macro.toFixed(3)}</td>
+                    <td className="num py-1.5 text-right text-fg-tertiary">{(r.accuracy * 100).toFixed(1)}%</td>
+                    <td className="num py-1.5 text-right text-fg-tertiary">{r.f1_macro.toFixed(3)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             {m1.shap_top_features?.length > 0 && (
-              <p className="mt-2.5 text-[11px] text-slate-500">
+              <p className="mt-2.5 text-caption text-fg-muted">
                 Weighs most on: {m1.shap_top_features.slice(0, 4).map((f) => f.feature.replace(/_/g, " ")).join(", ")}
               </p>
             )}
@@ -197,23 +197,23 @@ function ModelPerformance() {
 
         {m2 && (
           <div>
-            <h3 className="text-[12px] font-semibold text-slate-300">M2 — component &amp; time-to-failure</h3>
+            <h3 className="text-label font-semibold text-fg-secondary">M2 — component &amp; time-to-failure</h3>
             <div className="mt-2.5 grid grid-cols-2 gap-2">
               <Stat value={`${(m2.component_classifier.accuracy * 100).toFixed(1)}%`} label="component accuracy" />
               <Stat value={`±${m2.progress_regressor.mae_days_equivalent.toFixed(1)}d`} label="days-to-failure MAE" />
             </div>
-            <p className="mt-2.5 text-[11px] leading-relaxed text-slate-500">
-              Severity rule: <code className="rounded bg-ink-700/60 px-1 py-0.5 text-slate-400">{m2.severity_rule}</code>
+            <p className="mt-2.5 text-caption leading-relaxed text-fg-muted">
+              Severity rule: <code className="rounded bg-surface-inset/60 px-1 py-0.5 text-fg-tertiary">{m2.severity_rule}</code>
             </p>
           </div>
         )}
       </div>
 
       {m4 && (
-        <div className="mt-4 rounded-lg border border-edge bg-ink-700/30 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
-          <span className="font-semibold text-slate-400">M4 — anomaly detector: </span>
+        <div className="mt-4 rounded-lg border border-border bg-surface-inset/30 px-3.5 py-3 text-caption leading-relaxed text-fg-muted">
+          <span className="font-semibold text-fg-tertiary">M4 — anomaly detector: </span>
           not shown as a result. Its own evaluation is honest about why:{" "}
-          <span className="text-slate-500">{m4.limitation}</span>
+          <span className="text-fg-muted">{m4.limitation}</span>
         </div>
       )}
     </Card>
@@ -263,7 +263,7 @@ function VehicleDetail({ vin, canTrigger }) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setChatOpen(true)}
-              className="rounded-lg border border-edge px-3 py-1.5 text-[12px] font-semibold text-slate-300 transition duration-150 hover:border-accent/50 hover:text-accent active:scale-[0.97]"
+              className="rounded-lg border border-border px-3 py-1.5 text-label font-semibold text-fg-secondary transition duration-150 hover:border-accent/50 hover:text-accent-ink active:scale-[0.97]"
             >
               Chat with assistant
             </button>
@@ -271,7 +271,7 @@ function VehicleDetail({ vin, canTrigger }) {
               <button
                 onClick={triggerRun}
                 disabled={running}
-                className="rounded-lg bg-accent-deep px-3 py-1.5 text-[12px] font-semibold text-white transition duration-150 hover:bg-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+                className="rounded-lg bg-accent-deep px-3 py-1.5 text-label font-semibold text-white transition duration-150 hover:bg-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
               >
                 {running ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -290,17 +290,17 @@ function VehicleDetail({ vin, canTrigger }) {
         </div>
 
         {runResult && (
-          <div className="mt-4 rounded-lg border border-edge bg-ink-700/40 px-4 py-3 text-[12px]">
+          <div className="mt-4 rounded-lg border border-border bg-surface-inset/40 px-4 py-3 text-label">
             {runResult.error ? (
               <span className="text-p1">{runResult.error}</span>
             ) : (
               <>
-                <span className="font-semibold text-slate-200">
+                <span className="font-semibold text-fg">
                   Master-graph run {runResult.status}
                 </span>
-                <span className="ml-2 text-slate-500">job {runResult.job_id}</span>
+                <span className="ml-2 text-fg-muted">job {runResult.job_id}</span>
                 {runResult.result && (
-                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-slate-500">
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-caption text-fg-muted">
                     {JSON.stringify(runResult.result, null, 2)}
                   </pre>
                 )}
@@ -345,10 +345,10 @@ function VehicleDetail({ vin, canTrigger }) {
           ) : (
             <ul className="space-y-2">
               {predictions.map((p) => (
-                <li key={p.component} className="flex items-center justify-between rounded-lg border border-edge bg-ink-700/40 px-3 py-2 text-[12px]">
+                <li key={p.component} className="flex items-center justify-between rounded-lg border border-border bg-surface-inset/40 px-3 py-2 text-label">
                   <div>
-                    <div className="font-medium text-slate-200">{p.component.replace(/_/g, " ")}</div>
-                    <div className="text-slate-500">
+                    <div className="font-medium text-fg">{p.component.replace(/_/g, " ")}</div>
+                    <div className="text-fg-muted">
                       {(p.failure_prob * 100).toFixed(0)}% prob
                       {p.days_to_failure != null && ` · ~${p.days_to_failure}d`}
                     </div>
@@ -366,10 +366,10 @@ function VehicleDetail({ vin, canTrigger }) {
           ) : (
             <ul className="space-y-2">
               {maintenance_history.map((h, i) => (
-                <li key={i} className="rounded-lg border border-edge bg-ink-700/40 px-3 py-2 text-[12px]">
+                <li key={i} className="rounded-lg border border-border bg-surface-inset/40 px-3 py-2 text-label">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-slate-200">{h.service_type}</span>
-                    <span className="text-slate-500">{formatDate(h.date)}</span>
+                    <span className="font-medium text-fg">{h.service_type}</span>
+                    <span className="text-fg-muted">{formatDate(h.date)}</span>
                   </div>
                   {h.components_replaced?.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -487,70 +487,66 @@ function ChatModal({ vin, onClose }) {
   }
 
   return (
-    <div className="animate-in fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm" onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="flex h-[600px] w-full max-w-md flex-col overflow-hidden rounded-xl border border-edge bg-ink-800 shadow-2xl"
-      >
-        <header className="flex items-center justify-between gap-4 border-b border-edge px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/20 text-accent">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-            </div>
-            <div>
-              <h2 className="text-[13px] font-semibold text-slate-100">AutoSaarthi Assistant</h2>
-              <p className="text-[11px] text-slate-500">customer_engagement_agent · {vin}</p>
-            </div>
+    <Dialog
+      title="AutoSaarthi Assistant"
+      onClose={onClose}
+      className="h-[600px] max-w-md"
+      header={
+        <div className="flex items-center gap-2.5">
+          <div aria-hidden className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/20 text-accent-ink">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
           </div>
-          <div className="flex items-center gap-1">
-            {messages.length > 0 && (
-              <button
-                onClick={() => load(true)}
-                disabled={busy}
-                className="rounded-md px-2 py-1 text-[11px] text-slate-500 transition hover:bg-ink-700 hover:text-slate-300 disabled:opacity-40"
-                title="Close this conversation and begin a new one"
-              >
-                Start over
-              </button>
-            )}
-            <button onClick={onClose} className="rounded-md p-1 text-slate-500 transition hover:bg-ink-700 hover:text-slate-300" aria-label="Close">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
+          <div>
+            <h2 className="text-body-sm font-semibold text-fg-strong">AutoSaarthi Assistant</h2>
+            <p className="text-caption text-fg-muted">Customer engagement agent · {vin}</p>
           </div>
-        </header>
+        </div>
+      }
+      actions={messages.length > 0 && (
+        <button
+          type="button"
+          onClick={() => load(true)}
+          disabled={busy}
+          className="rounded-md px-2 py-1 text-caption text-fg-muted transition hover:bg-surface-inset hover:text-fg-secondary disabled:opacity-40"
+          title="Close this conversation and begin a new one"
+        >
+          Start over
+        </button>
+      )}
+    >
 
         <div className="flex-1 space-y-2.5 overflow-y-auto p-4">
           {error && <Empty icon="search">{error}</Empty>}
           {note && <Empty icon="inbox">{note}</Empty>}
           {resumed && messages.length > 0 && (
-            <p className="pb-1 text-center text-[10.5px] text-slate-600">
+            <p className="pb-1 text-center text-caption text-fg-subtle">
               Continuing your earlier conversation
             </p>
           )}
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-body-sm leading-relaxed ${
                   m.role === "user"
                     ? "rounded-br-sm bg-accent text-white"
                     : m.role === "system"
                     ? "rounded-bl-sm border border-p1/30 bg-p1/10 text-p1"
-                    : "rounded-bl-sm border border-edge bg-ink-700/60 text-slate-200"
+                    : "rounded-bl-sm border border-border bg-surface-inset/60 text-fg"
                 }`}
               >
                 {(m.strategy || m.source || m.agent) && (
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-wider">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5 font-mono text-caption uppercase tracking-wider">
                     {m.agent && AGENT_LABELS[m.agent] && (
-                      <span className="rounded bg-ink-600/70 px-1 py-px text-slate-400" title={m.agent}>
+                      <span className="rounded bg-surface-inset-strong/70 px-1 py-px text-fg-tertiary" title={m.agent}>
                         {AGENT_LABELS[m.agent]}
                       </span>
                     )}
-                    {m.strategy && <span className="text-accent/70">{m.strategy}</span>}
+                    {m.strategy && <span className="text-accent-ink">{m.strategy}</span>}
                     {m.source && m.source !== "policy" && (
                       <span
                         className={`rounded px-1 py-px normal-case tracking-normal ${
                           m.source === "demo_fixture" || m.source === "static_fallback"
-                            ? "bg-ink-600/60 text-slate-500"
+                            ? "bg-surface-inset-strong/60 text-fg-muted"
                             : "bg-ok/15 text-ok"
                         }`}
                         title={
@@ -573,7 +569,7 @@ function ChatModal({ vin, onClose }) {
                   </div>
                 )}
                 {m.role === "user" && m.intent && (
-                  <div className="mb-1 text-right font-mono text-[9.5px] uppercase tracking-wider text-white/60"
+                  <div className="mb-1 text-right font-mono text-caption uppercase tracking-wider text-white/60"
                        title={`Routed by ${m.intentSource === "llm" ? "the live intent classifier" : "the deterministic fallback"}`}>
                     {m.intent}{m.intentSource === "llm" ? "" : " · fallback"}
                   </div>
@@ -584,15 +580,15 @@ function ChatModal({ vin, onClose }) {
           ))}
           {busy && (
             <div className="flex justify-start">
-              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm border border-edge bg-ink-700/60 px-3.5 py-2.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500 pulse-soft" />
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500 pulse-soft" style={{ animationDelay: "150ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-slate-500 pulse-soft" style={{ animationDelay: "300ms" }} />
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm border border-border bg-surface-inset/60 px-3.5 py-2.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-fg-muted pulse-soft" />
+                <span className="h-1.5 w-1.5 rounded-full bg-fg-muted pulse-soft" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-fg-muted pulse-soft" style={{ animationDelay: "300ms" }} />
               </div>
             </div>
           )}
           {done && booking && (
-            <div className={`rounded-lg border px-3.5 py-2.5 text-center text-[12px] font-medium ${
+            <div className={`rounded-lg border px-3.5 py-2.5 text-center text-label font-medium ${
               booking.booked ? "border-ok/40 bg-ok/10 text-ok" : "border-p2/40 bg-p2/10 text-p2"
             }`}>
               {booking.booked ? `✓ Appointment ${booking.appointment_id} confirmed` : booking.reason || "Couldn't complete the booking"}
@@ -601,24 +597,25 @@ function ChatModal({ vin, onClose }) {
           <div ref={bottomRef} />
         </div>
 
-        <div className="flex items-center gap-2 border-t border-edge p-3">
+        <div className="flex items-center gap-2 border-t border-border p-3">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
             disabled={busy || done || !session}
+            aria-label="Message to the assistant"
             placeholder={done ? "Conversation ended" : "Ask a question, or reply…"}
-            className="flex-1 rounded-lg border border-edge bg-ink-900 px-3 py-2 text-[13px] text-slate-100 outline-none placeholder:text-slate-600 focus:border-accent/60 disabled:opacity-50"
+            className="flex-1 rounded-lg border border-border bg-surface-page px-3 py-2 text-body-sm text-fg-strong outline-none placeholder:text-fg-subtle focus:border-accent/60 disabled:opacity-50"
           />
           <button
             onClick={send}
+            aria-label="Send"
             disabled={busy || done || !input.trim() || !session}
             className="rounded-lg bg-accent-deep px-3.5 py-2 text-white transition duration-150 hover:bg-accent active:scale-95 disabled:opacity-40"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

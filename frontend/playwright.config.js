@@ -9,7 +9,7 @@ export default defineConfig({
     // Strict on purpose: a 3% (and even 0.2%) ratio let a changed date format
     // and a changed badge through unnoticed. Every screen renders identically
     // run to run except the Security Console's live feeds, which its test masks.
-    toHaveScreenshot: { maxDiffPixels: 20, animations: "disabled" },
+    toHaveScreenshot: { maxDiffPixels: 20, threshold: 0.02, animations: "disabled" },
   },
   use: {
     baseURL: "http://localhost:5173",

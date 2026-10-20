@@ -21,3 +21,6 @@ demo/audio/*.wav
 frontend/test-results/
 frontend/playwright-report/
 frontend/coverage/
+# Generated CAPA PDFs (the app writes one per export). The four committed
+# before this line are left as they were.
+data/reports/*.pdf

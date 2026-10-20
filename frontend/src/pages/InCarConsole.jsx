@@ -124,11 +124,11 @@ export default function InCarConsole() {
     <div className="space-y-4">
       {/* Simulator rail — deliberately outside the device frame. The console
           never asserts its own drive state; the server does. */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-edge bg-ink-800/60 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-card/60 px-3 py-2.5">
         <select
           value={vin || ""}
           onChange={(e) => setVin(e.target.value)}
-          className="rounded-lg border border-edge bg-ink-700/60 px-2.5 py-1.5 text-[12px] text-slate-200 outline-none focus:border-accent"
+          className="rounded-lg border border-border bg-surface-inset/60 px-2.5 py-1.5 text-label text-fg outline-none focus:border-accent"
         >
           {fleet.map((v) => (
             <option key={v.vin} value={v.vin}>
@@ -143,10 +143,10 @@ export default function InCarConsole() {
               key={s.id}
               onClick={() => setDriveState(s.id)}
               title={s.sub}
-              className={`rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition ${
+              className={`rounded-lg border px-2.5 py-1.5 text-label font-medium transition ${
                 driveState === s.id
                   ? "border-accent/50 bg-accent/10 text-accent-ink"
-                  : "border-edge bg-ink-700/40 text-slate-400 hover:border-slate-600"
+                  : "border-border bg-surface-inset/40 text-fg-tertiary hover:border-fg-subtle"
               }`}
             >
               {s.label}
@@ -156,12 +156,12 @@ export default function InCarConsole() {
 
         <button
           onClick={() => setNight((n) => !n)}
-          className="rounded-lg border border-edge bg-ink-700/40 px-2.5 py-1.5 text-[12px] text-slate-400 transition hover:border-slate-600"
+          className="rounded-lg border border-border bg-surface-inset/40 px-2.5 py-1.5 text-label text-fg-tertiary transition hover:border-fg-subtle"
         >
           {night ? "Night" : "Day"}
         </button>
 
-        <span className="ml-auto text-[11px] text-slate-500">
+        <span className="ml-auto text-caption text-fg-muted">
           {running ? "asking the guard…" : "rendered from the live UEBA verdict"}
         </span>
       </div>
@@ -180,7 +180,7 @@ export default function InCarConsole() {
                   {driveState === "PARKED" ? "P" : "D"}
                 </span>
                 {driveState !== "PARKED" && (
-                  <span style={{ fontFamily: SANS, fontSize: 19, fontWeight: 700, color: t.ink }}>
+                  <span style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>
                     {DRIVE_STATES.find((s) => s.id === driveState).speed}
                     <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: t.dim, marginLeft: 6 }}>km/h</span>
                   </span>
@@ -205,12 +205,12 @@ export default function InCarConsole() {
       </CarFrame>
 
       {/* The receipt. Same verdicts the screen above was built from. */}
-      <div className="rounded-xl border border-edge bg-ink-800/60 px-4 py-3">
-        <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+      <div className="rounded-xl border border-border bg-surface-card/60 px-4 py-3">
+        <div className="mb-2 text-caption font-medium uppercase tracking-wider text-fg-muted">
           What the guard decided
         </div>
         {!result?.steps?.length ? (
-          <p className="text-[12.5px] text-slate-500">
+          <p className="text-label text-fg-muted">
             {result?.prediction === null
               ? "No active prediction for this vehicle — the agent had nothing to raise."
               : "…"}
@@ -218,21 +218,21 @@ export default function InCarConsole() {
         ) : (
           <div className="space-y-1.5">
             {result.steps.map((s, i) => (
-              <div key={i} className="flex flex-wrap items-baseline gap-2 text-[12.5px]">
-                <span className={`rounded px-1.5 py-0.5 font-mono text-[10.5px] font-semibold ${
+              <div key={i} className="flex flex-wrap items-baseline gap-2 text-label">
+                <span className={`rounded px-1.5 py-0.5 font-mono text-caption font-semibold ${
                   s.decision === "ALLOW" ? "bg-ok/10 text-ok-ink" : "bg-p1/10 text-p1-ink"
                 }`}>
                   {s.decision}
                 </span>
-                <span className="font-mono text-slate-300">{s.tool}</span>
-                {s.risk != null && <span className="text-slate-500">risk {s.risk}</span>}
+                <span className="font-mono text-fg-secondary">{s.tool}</span>
+                {s.risk != null && <span className="text-fg-muted">risk {s.risk}</span>}
                 {s.reasons?.[0]?.detail && (
-                  <span className="text-slate-500">— {s.reasons[0].detail}</span>
+                  <span className="text-fg-muted">— {s.reasons[0].detail}</span>
                 )}
               </div>
             ))}
             {blocked.length > 0 && (
-              <p className="pt-1 text-[12px] text-slate-500">
+              <p className="pt-1 text-label text-fg-muted">
                 The screen above has no slot list and no tap target because these calls were
                 refused — not because this page checks the speed itself.
               </p>
@@ -293,7 +293,7 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 18, padding: "16px 22px",
-          background: night ? "#241512" : "#fdeae5",
+          background: t.alertBg,
           borderBottom: `2px solid ${t.pillInk}`, flexShrink: 0,
         }}>
           <Pill night={night}>{pred.severity}</Pill>
@@ -314,7 +314,7 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
           }}>
             <Waveform night={night} />
             <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 600, color: t.ink }}>Agent speaking</div>
-            <p style={{ fontFamily: SANS, fontSize: 13.5, color: t.dim, lineHeight: 1.55, margin: 0 }}>
+            <p style={{ fontFamily: SANS, fontSize: 13, color: t.dim, lineHeight: 1.55, margin: 0 }}>
               Booking is locked while the vehicle is in motion. Say “book it” and I'll
               confirm when you stop.
             </p>
@@ -324,7 +324,7 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
               </PrimaryButton>
             </div>
             <Meta night={night} style={{
-              background: night ? "#1c2026" : "#e3e6ea", padding: "5px 10px", borderRadius: 6,
+              background: t.control, padding: "5px 10px", borderRadius: 6,
             }}>
               disabled · in motion
             </Meta>
@@ -408,9 +408,9 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
         {booked ? (
           <div style={{
             border: `1px solid ${t.edge}`, borderRadius: 14, padding: 18,
-            background: night ? "#12251a" : "#eaf7ee", textAlign: "center",
+            background: t.okBg, textAlign: "center",
           }}>
-            <Meta night={night} style={{ color: "#1f9d55" }}>Confirmed</Meta>
+            <Meta night={night} style={{ color: t.positive }}>Confirmed</Meta>
             <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 600, color: t.ink, marginTop: 6 }}>
               Tuesday 09:30 · Rajkot
             </div>
@@ -445,7 +445,7 @@ function Waveform({ night }) {
       {bars.map((h, i) => (
         <div key={i} style={{
           width: 3, height: h, borderRadius: 2,
-          background: night ? "#5aa9e6" : "#7ab8e8",
+          background: tokens(night).marker,
         }} />
       ))}
     </div>

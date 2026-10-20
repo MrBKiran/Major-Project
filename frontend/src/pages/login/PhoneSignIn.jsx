@@ -79,7 +79,7 @@ export default function PhoneSignIn({ busy, error, onVerify }) {
               autoFocus
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className={`${inputCls} text-center font-mono text-lg tracking-[0.4em]`}
+              className={`${inputCls} text-center font-mono text-title-sm tracking-[0.4em]`}
               placeholder="••••••"
             />
           </Field>
@@ -93,8 +93,8 @@ export default function PhoneSignIn({ busy, error, onVerify }) {
       </button>
 
       {requested && (
-        <div className="flex items-center justify-between text-[12px]">
-          <button type="button" onClick={() => { setRequested(false); setCode(""); }} className="text-slate-500 hover:text-slate-300">
+        <div className="flex items-center justify-between text-label">
+          <button type="button" onClick={() => { setRequested(false); setCode(""); }} className="text-fg-muted hover:text-fg-secondary">
             ← different number
           </button>
           <button type="button" disabled={wait > 0 || sending} onClick={requestCode} className={ghostCls}>

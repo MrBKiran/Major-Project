@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { Badge, Card, Empty, Skeleton, SkeletonStatRow, Stat, inr } from "../ui.jsx";
+import { Badge, Card, Dialog, Empty, Skeleton, SkeletonStatRow, Stat, inr } from "../ui.jsx";
 
 /** Downloads the drafted CAPA as a PDF.
  *
@@ -37,11 +37,11 @@ function DownloadCapaButton() {
 
   return (
     <span className="flex items-center gap-2">
-      {error && <span className="text-[11px] text-p1">{error}</span>}
+      {error && <span className="text-caption text-p1">{error}</span>}
       <button
         onClick={run}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-edge px-2.5 py-1 text-[12px] font-medium text-slate-300 transition duration-150 hover:border-accent/50 hover:text-accent active:scale-95 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-label font-medium text-fg-secondary transition duration-150 hover:border-accent/50 hover:text-accent-ink active:scale-95 disabled:opacity-50"
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
@@ -85,9 +85,9 @@ export default function PlantDashboard() {
           title="Every cohort screened"
           subtitle="Shown in full, including what was rejected — the rejects are why the accept is credible"
         >
-          <table className="w-full text-[13px]">
+          <table className="w-full text-body-sm">
             <thead>
-              <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wider text-slate-500">
+              <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
                 <th className="pb-2 font-medium">Cluster</th>
                 <th className="pb-2 text-right font-medium">Rate</th>
                 <th className="pb-2 text-right font-medium">Lift</th>
@@ -98,14 +98,14 @@ export default function PlantDashboard() {
             </thead>
             <tbody>
               {clusters.map((x) => (
-                <tr key={x.cluster_key} className="border-b border-edge/50 last:border-0">
-                  <td className="py-2.5 font-mono text-[12px] text-slate-300">{x.cluster_key}</td>
-                  <td className="num py-2.5 text-right text-slate-400">
+                <tr key={x.cluster_key} className="border-b border-border/50 last:border-0">
+                  <td className="py-2.5 font-mono text-label text-fg-secondary">{x.cluster_key}</td>
+                  <td className="num py-2.5 text-right text-fg-tertiary">
                     {(x.failure_rate * 100).toFixed(1)}%
                   </td>
-                  <td className="num py-2.5 text-right text-slate-200">{x.lift}×</td>
-                  <td className="num py-2.5 text-right text-slate-500">{x.p_value}</td>
-                  <td className="num py-2.5 text-right text-slate-500">{x.q_value}</td>
+                  <td className="num py-2.5 text-right text-fg">{x.lift}×</td>
+                  <td className="num py-2.5 text-right text-fg-muted">{x.p_value}</td>
+                  <td className="num py-2.5 text-right text-fg-muted">{x.q_value}</td>
                   <td className="py-2.5 pl-4">
                     {x.survives_fdr ? (
                       <Badge tone="danger">actionable</Badge>
@@ -145,7 +145,7 @@ function CapaDraft() {
     return (
       <div className="space-y-5">
         <Card>
-          <p className="mb-3 flex items-center gap-2 text-[12.5px] text-slate-500">
+          <p className="mb-3 flex items-center gap-2 text-label text-fg-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-accent pulse-soft" />
             Analysing fleet service history — Fisher's exact test across every cohort…
           </p>
@@ -177,10 +177,10 @@ function CapaDraft() {
         }
       >
         <div className="mb-4 flex items-baseline gap-3">
-          <span className="text-lg font-semibold text-slate-100">
+          <span className="text-title-sm font-semibold text-fg-strong">
             {c.component.replace(/_/g, " ")}
           </span>
-          <span className="text-sm text-slate-500">{c.cluster_key}</span>
+          <span className="text-body text-fg-muted">{c.cluster_key}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -211,7 +211,7 @@ function CapaDraft() {
           />
         </div>
 
-        <p className="mt-4 rounded-lg border border-ok/25 bg-ok/5 px-4 py-2.5 text-[13px] text-slate-300">
+        <p className="mt-4 rounded-lg border border-ok/25 bg-ok/5 px-4 py-2.5 text-body-sm text-fg-secondary">
           <span className="font-semibold text-ok">Corrected for multiple comparisons.</span>{" "}
           Screening this many cohorts at p&lt;0.05 is expected to throw false positives;
           the Benjamini–Hochberg q-value is what separates this cluster from them.
@@ -227,12 +227,12 @@ function CapaDraft() {
           <ol className="space-y-3">
             {d.five_why.map((w, i) => (
               <li key={i} className="relative pl-8">
-                <span className="absolute left-0 top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-accent/40 bg-accent/15 text-[11px] font-bold text-accent">
+                <span className="absolute left-0 top-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-accent/40 bg-accent/15 text-caption font-bold text-accent-ink">
                   {i + 1}
                 </span>
-                <p className="text-[13px] font-medium text-slate-200">{w.why}</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-slate-400">{w.because}</p>
-                <p className="mt-1 font-mono text-[11px] text-slate-600">[{w.evidence}]</p>
+                <p className="text-body-sm font-medium text-fg">{w.why}</p>
+                <p className="mt-1 text-body-sm leading-relaxed text-fg-tertiary">{w.because}</p>
+                <p className="mt-1 font-mono text-caption text-fg-subtle">[{w.evidence}]</p>
               </li>
             ))}
           </ol>
@@ -248,7 +248,7 @@ function CapaDraft() {
             </div>
           }
         >
-          <dl className="space-y-3 text-[13px]">
+          <dl className="space-y-3 text-body-sm">
             <Field label="Draft ID" mono>{d.capa_id}</Field>
             <Field label="Cited precedent">
               <div className="flex flex-wrap gap-1.5">
@@ -256,7 +256,7 @@ function CapaDraft() {
                   <button
                     key={id}
                     onClick={() => setOpenCapaId(id)}
-                    className="rounded border border-edge bg-ink-700 px-1.5 py-0.5 font-mono text-[11px] text-slate-300 transition duration-150 hover:border-accent/50 hover:text-accent active:scale-95"
+                    className="rounded border border-border bg-surface-inset px-1.5 py-0.5 font-mono text-caption text-fg-secondary transition duration-150 hover:border-accent/50 hover:text-accent-ink active:scale-95"
                   >
                     {id}
                   </button>
@@ -272,7 +272,7 @@ function CapaDraft() {
               <button
                 onClick={() => setSent(true)}
                 disabled={sent}
-                className={`mt-5 w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition duration-200 ${
+                className={`mt-5 w-full rounded-lg px-4 py-2.5 text-body font-semibold transition duration-200 ${
                   sent
                     ? "animate-in cursor-default border border-ok/40 bg-ok/15 text-ok"
                     : "bg-accent-deep text-white hover:bg-accent active:scale-[0.98]"
@@ -280,20 +280,20 @@ function CapaDraft() {
               >
                 {sent ? "✓ Sent to Manufacturing — Nashik" : "Send to Manufacturing"}
               </button>
-              <p className="mt-2 text-center text-[11px] text-slate-500">
+              <p className="mt-2 text-center text-caption text-fg-muted">
                 {sent
                   ? "notify.plant is side-effect: irreversible — logged in the audit chain"
                   : "Requires human approval — the agent drafts, it does not dispatch"}
               </p>
             </>
           ) : (
-            <div className="mt-5 rounded-lg border border-edge bg-ink-700/40 px-4 py-3 text-center">
-              <p className="text-[12px] text-slate-400">
+            <div className="mt-5 rounded-lg border border-border bg-surface-inset/40 px-4 py-3 text-center">
+              <p className="text-label text-fg-tertiary">
                 Your role can draft CAPA tickets but not dispatch them.
               </p>
-              <p className="mt-0.5 text-[11px] text-slate-600">
+              <p className="mt-0.5 text-caption text-fg-subtle">
                 Sending to manufacturing needs{" "}
-                <span className="font-mono text-slate-500">capa:dispatch</span> — held by
+                <span className="font-mono text-fg-muted">capa:dispatch</span> — held by
                 Quality Manager, not Quality Engineer, deliberately.
               </p>
             </div>
@@ -318,36 +318,14 @@ function CapaModal({ capaId, onClose }) {
     api.get(`/api/capa/${capaId}`).then(setDoc).catch((e) => setError(e.message || String(e)));
   }, [capaId]);
 
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="animate-in fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-      onClick={onClose}
+    <Dialog
+      title={capaId}
+      subtitle="Historical precedent — cited by the 5-Why above"
+      onClose={onClose}
+      className="max-w-lg"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-edge bg-ink-800 shadow-2xl"
-      >
-        <header className="sticky top-0 flex items-start justify-between gap-4 border-b border-edge bg-ink-800 px-5 py-3.5">
-          <div>
-            <h2 className="font-mono text-[13px] font-semibold text-slate-100">{capaId}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Historical precedent — cited by the 5-Why above</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-slate-500 transition hover:bg-ink-700 hover:text-slate-300"
-            aria-label="Close"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        </header>
+      <div className="overflow-y-auto">
 
         <div className="p-5">
           {error ? (
@@ -359,7 +337,7 @@ function CapaModal({ capaId, onClose }) {
               <Skeleton className="h-20 w-full" />
             </div>
           ) : (
-            <div className="space-y-4 text-[13px]">
+            <div className="space-y-4 text-body-sm">
               <div className="flex flex-wrap gap-1.5">
                 <Badge tone="accent">{doc.component?.replace(/_/g, " ")}</Badge>
                 {doc.plant && <Badge tone="slate">{doc.plant}</Badge>}
@@ -373,11 +351,11 @@ function CapaModal({ capaId, onClose }) {
               <Field label="Root cause">{doc.root_cause}</Field>
               {doc.five_why?.length > 0 && (
                 <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">5-Why</dt>
+                  <dt className="text-caption font-medium uppercase tracking-wider text-fg-muted">5-Why</dt>
                   <ol className="mt-1.5 space-y-1.5">
                     {doc.five_why.map((w, i) => (
-                      <li key={i} className="flex gap-2 text-[12.5px] text-slate-400">
-                        <span className="text-slate-600">{i + 1}.</span> {w}
+                      <li key={i} className="flex gap-2 text-label text-fg-tertiary">
+                        <span className="text-fg-subtle">{i + 1}.</span> {w}
                       </li>
                     ))}
                   </ol>
@@ -389,15 +367,15 @@ function CapaModal({ capaId, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
 function Field({ label, children, mono }) {
   return (
     <div>
-      <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</dt>
-      <dd className={`mt-0.5 text-slate-300 ${mono ? "font-mono text-[12px]" : ""}`}>{children}</dd>
+      <dt className="text-caption font-medium uppercase tracking-wider text-fg-muted">{label}</dt>
+      <dd className={`mt-0.5 text-fg-secondary ${mono ? "font-mono text-label" : ""}`}>{children}</dd>
     </div>
   );
 }

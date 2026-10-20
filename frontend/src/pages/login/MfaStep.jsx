@@ -15,7 +15,7 @@ export default function MfaStep({ busy, error, onSubmit, onBack }) {
       }}
       className="animate-in space-y-4"
     >
-      <p className="text-[13px] text-slate-400">
+      <p className="text-body-sm text-fg-tertiary">
         {recovery
           ? "Enter one of your recovery codes. Each works once."
           : "Enter the 6-digit code from your authenticator app."}
@@ -31,7 +31,7 @@ export default function MfaStep({ busy, error, onSubmit, onBack }) {
           maxLength={recovery ? 16 : 6}
           value={code}
           onChange={(e) => setCode(recovery ? e.target.value : e.target.value.replace(/\D/g, ""))}
-          className={`${inputCls} text-center font-mono text-lg ${recovery ? "tracking-widest" : "tracking-[0.4em]"}`}
+          className={`${inputCls} text-center font-mono text-title-sm ${recovery ? "tracking-widest" : "tracking-[0.4em]"}`}
           placeholder={recovery ? "xxxxx-xxxxx" : "••••••"}
         />
       </Field>
@@ -42,14 +42,14 @@ export default function MfaStep({ busy, error, onSubmit, onBack }) {
         {busy ? "Checking…" : "Verify"}
       </button>
 
-      <div className="flex items-center justify-between text-[12px]">
-        <button type="button" onClick={onBack} className="text-slate-500 hover:text-slate-300">
+      <div className="flex items-center justify-between text-label">
+        <button type="button" onClick={onBack} className="text-fg-muted hover:text-fg-secondary">
           ← back
         </button>
         <button
           type="button"
           onClick={() => { setRecovery((r) => !r); setCode(""); }}
-          className="text-slate-500 hover:text-slate-300"
+          className="text-fg-muted hover:text-fg-secondary"
         >
           {recovery ? "Use authenticator app" : "Lost your device? Use a recovery code"}
         </button>

@@ -20,8 +20,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { color } from "@autosaarthi/tokens";
 import { api } from "../api.js";
-import { drivingLeft, formatDate, formatDays, formatINR, formatSlot as formatSlotTime } from "@autosaarthi/core";
+import { useAuth } from "../auth/AuthContext.jsx";
+import { NightProvider, useNight, usePageTheme, useSystemNight } from "../night.jsx";
+import { drivingLeft, formatDate, formatDays, formatINR, formatSlot as formatSlotTime, signalLabel } from "@autosaarthi/core";
 import {
   ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill, PhoneFrame,
   PhoneStatusBar, PrimaryButton, SANS, Spark, tokens,
@@ -65,6 +68,12 @@ const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
  * preview OF this, not a second implementation of it.
  */
 export default function OwnerApp({ standalone = false }) {
+  const { logout } = useAuth();
+  // The phone follows its own light/dark setting; the console's preview of it
+  // stays light, inside the light console the demo slides are taken from.
+  const systemNight = useSystemNight();
+  const night = standalone && systemNight;
+  usePageTheme(standalone ? night : undefined);
   const [vin, setVin] = useState(null);
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
@@ -88,12 +97,12 @@ export default function OwnerApp({ standalone = false }) {
       .catch((e) => setError(e.message || String(e)));
   }, [load]);
 
-  const t = tokens(false);
+  const t = tokens(night);
   const top = (detail?.predictions || []).find((p) => p.severity) || null;
 
   const body = error ? (
     <div style={{ padding: 24 }}>
-      <Meta night={false}>Unavailable</Meta>
+      <Meta night={night}>Unavailable</Meta>
       <p style={{ fontFamily: SANS, fontSize: 15, color: t.dim, marginTop: 8 }}>{error}</p>
     </div>
   ) : !detail ? (
@@ -115,6 +124,7 @@ export default function OwnerApp({ standalone = false }) {
 
   if (standalone) {
     return (
+      <NightProvider value={night}>
       <div
         style={{
           // svh, not vh: mobile browsers shrink the visual viewport when the
@@ -129,30 +139,46 @@ export default function OwnerApp({ standalone = false }) {
           paddingRight: "env(safe-area-inset-right)",
         }}
       >
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 14px 0" }}>
+          <button
+            type="button"
+            onClick={logout}
+            style={{
+              border: "none", background: "transparent", padding: "8px 6px", minHeight: 44,
+              fontFamily: SANS, fontSize: 13, color: t.dim, cursor: "pointer",
+            }}
+          >
+            Sign out
+          </button>
+        </div>
         {body}
       </div>
+      </NightProvider>
     );
   }
 
   return (
+    <NightProvider value={false}>
     <div className="flex flex-col items-center gap-4 py-2">
       <div className="flex w-full max-w-md items-baseline justify-between px-1">
-        <p className="text-[12.5px] text-slate-500">
+        <p className="text-label text-fg-muted">
           Owner app · individual owners only. Same live data as the console, shaped for one decision.
         </p>
       </div>
 
-      <PhoneFrame statusBar={<PhoneStatusBar night={false} time="9:16" right="LTE  84%" />}>
+      <PhoneFrame statusBar={<PhoneStatusBar night={night} time="9:16" right="LTE  84%" />}>
         {body}
       </PhoneFrame>
     </div>
+    </NightProvider>
   );
 }
 
 /* ── chrome ──────────────────────────────────────────────────────────────── */
 
 function LoadingPane() {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   return (
     <div style={{ padding: 24, display: "grid", gap: 12 }}>
       {[64, 200, 120].map((h, i) => (
@@ -163,7 +189,8 @@ function LoadingPane() {
 }
 
 function ScreenHeader({ title, back, right }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 12, padding: "10px 18px 14px",
@@ -191,7 +218,8 @@ function ScreenHeader({ title, back, right }) {
 /* ── P04 / P05 — home ────────────────────────────────────────────────────── */
 
 function Home({ detail, top, booking, go }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   const v = detail.vehicle;
   const history = detail.maintenance_history || [];
 
@@ -199,7 +227,7 @@ function Home({ detail, top, booking, go }) {
     <div style={{ padding: "6px 18px 28px" }}>
       <div style={{ paddingTop: 10, paddingBottom: 18 }}>
         <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>{v.model}</div>
-        <Meta night={false} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+        <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
           {v.vin} · {Number(v.odometer || 0).toLocaleString("en-IN")} km
         </Meta>
       </div>
@@ -215,7 +243,7 @@ function Home({ detail, top, booking, go }) {
       {/* Timeline rail — the deck's spine. The now-card above is the newest
           node; everything below is what already happened. No tabs. */}
       <div style={{ marginTop: 26 }}>
-        <Meta night={false}>Timeline</Meta>
+        <Meta night={night}>Timeline</Meta>
         <div style={{ marginTop: 12, position: "relative", paddingLeft: 18 }}>
           <div style={{
             position: "absolute", left: 4, top: 6, bottom: 6, width: 2,
@@ -244,7 +272,7 @@ function Home({ detail, top, booking, go }) {
             onClick={() => go("history")}
             style={{
               marginTop: 10, border: "none", background: "transparent", padding: 0,
-              fontFamily: SANS, fontSize: 13.5, color: ACCENT, cursor: "pointer", fontWeight: 500,
+              fontFamily: SANS, fontSize: 13, color: tokens(night).link, cursor: "pointer", fontWeight: 500,
             }}
           >
             All service history →
@@ -256,43 +284,58 @@ function Home({ detail, top, booking, go }) {
 }
 
 function TimelineNode({ title, sub, dot }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   return (
     <div style={{ position: "relative", paddingBottom: 16 }}>
       <div style={{
         position: "absolute", left: -18, top: 4, width: 10, height: 10,
         borderRadius: 99, background: dot, border: `2px solid ${t.page}`,
       }} />
-      <div style={{ fontFamily: SANS, fontSize: 14.5, color: t.ink, fontWeight: 500 }}>{title}</div>
-      {sub && <Meta night={false} style={{ textTransform: "none", letterSpacing: "0.02em" }}>{sub}</Meta>}
+      <div style={{ fontFamily: SANS, fontSize: 14, color: t.ink, fontWeight: 500 }}>{title}</div>
+      {sub && <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>{sub}</Meta>}
     </div>
   );
 }
 
 /** The quiet screen. One sentence, one number pair, ten flat sparklines —
  *  visible proof the system is watching without asking anything of the owner. */
-function HealthyCard({ detail }) {
-  const t = tokens(false);
+export function HealthyCard({ detail }) {
+  const night = useNight();
+  const t = tokens(night);
   const series = liveRows(detail.series);
   const signals = ["coolant_temp", "lub_oil_pressure", "battery_voltage", "fuel_pressure", "brake_fluid_pct", "speed"];
   return (
     <div style={{ border: `1px solid ${t.edge}`, borderRadius: 18, padding: 20, background: t.card }}>
-      <Meta night={false} style={{ color: "#1f9d55" }}>Healthy · agent watching</Meta>
+      <Meta night={night} style={{ color: tokens(night).positive }}>Healthy · agent watching</Meta>
       <div style={{ marginTop: 12 }}>
-        <Headline night={false} size={25} title="Everything reads normal"
+        <Headline night={night} size={27} title="Everything reads normal"
           body="Signals watched continuously. No trouble codes, no wear trend worth telling you about." />
       </div>
-      <div style={{
-        marginTop: 18, display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
-        gap: 12, paddingTop: 16, borderTop: `1px solid ${t.edge}`,
-      }}>
-        {signals.map((s) => (
-          <div key={s}>
-            <Spark night={false} w={90} h={22} values={series.map((r) => r[s])} tone="#b8bec6" />
-            <Meta night={false} style={{ fontSize: 9.5, textTransform: "none" }}>{s.replace(/_/g, " ")}</Meta>
-          </div>
-        ))}
-      </div>
+      {series.length < 2 ? (
+        // Six empty sparklines read as a page still loading, on the one screen
+        // whose message is "nothing is wrong" — say plainly what is missing.
+        <p style={{
+          fontFamily: SANS, fontSize: 13, color: t.dim, marginTop: 18, marginBottom: 0,
+          paddingTop: 16, borderTop: `1px solid ${t.edge}`,
+        }}>
+          No recent readings from the car — it reports again when the engine is on.
+        </p>
+      ) : (
+        <div style={{
+          marginTop: 18, display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 12, paddingTop: 16, borderTop: `1px solid ${t.edge}`,
+        }}>
+          {signals.map((s) => (
+            <div key={s}>
+              <Spark night={night} w={90} h={22} values={series.map((r) => r[s])} tone={tokens(night).icon} />
+              <span style={{ display: "block", fontFamily: SANS, fontSize: 12, color: t.dim, marginTop: 4 }}>
+                {signalLabel(s)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <p style={{ fontFamily: SANS, fontSize: 13, color: t.faint, marginTop: 16, marginBottom: 0 }}>
         We only contact you when something is actually changing.
       </p>
@@ -304,7 +347,8 @@ function HealthyCard({ detail }) {
  *  and both escape hatches sit above the primary action, because an owner who
  *  feels cornered by a service prompt stops trusting every later one. */
 export function NowCard({ top, go }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   const m = meta(top.component);
   const [repair, breakdown] = ECONOMICS[top.component] || [3000, 20000];
   const days = top.days_to_failure;
@@ -315,13 +359,13 @@ export function NowCard({ top, go }) {
       boxShadow: "0 8px 30px -14px rgba(216,57,26,0.35)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Pill night={false}>{top.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
-        <Meta night={false}>now</Meta>
+        <Pill night={night}>{top.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
+        <Meta night={night}>now</Meta>
       </div>
 
       <div style={{ marginTop: 14 }}>
         <Headline
-          night={false} size={26}
+          night={night} size={27}
           title={`Your ${m.label} ${m.plural ? "are" : "is"} wearing out`}
           body={days != null
             ? `${drivingLeft(days)}, on current use.`
@@ -330,18 +374,18 @@ export function NowCard({ top, go }) {
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <CostRows night={false} rows={[
+        <CostRows night={night} rows={[
           { label: "Repair now", value: inr(repair), strong: true },
           { label: "If it fails on road", value: inr(breakdown), tone: "bad", strong: true },
         ]} />
       </div>
 
       <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-        <GhostButton night={false} grow onClick={() => go("why")}>Why this part</GhostButton>
-        <GhostButton night={false} grow onClick={() => go("agent")}>Talk to agent</GhostButton>
+        <GhostButton night={night} grow onClick={() => go("why")}>Why this part</GhostButton>
+        <GhostButton night={night} grow onClick={() => go("agent")}>Talk to agent</GhostButton>
       </div>
       <div style={{ marginTop: 10 }}>
-        <PrimaryButton night={false} onClick={() => go("agent")} note="nothing is booked without your yes">
+        <PrimaryButton night={night} onClick={() => go("agent")} note="nothing is booked without your yes">
           Book a service
         </PrimaryButton>
       </div>
@@ -350,21 +394,22 @@ export function NowCard({ top, go }) {
 }
 
 function BookedCard({ booking, onOpen }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   return (
     <button
       onClick={onOpen}
       style={{
         width: "100%", textAlign: "left", cursor: "pointer",
         border: `1px solid ${t.edge}`, borderRadius: 18, padding: 20,
-        background: "#eaf7ee",
+        background: tokens(night).okBg,
       }}
     >
-      <Meta night={false} style={{ color: "#1f9d55" }}>Confirmed</Meta>
-      <div style={{ fontFamily: SANS, fontSize: 22, fontWeight: 700, color: t.ink, marginTop: 8 }}>
+      <Meta night={night} style={{ color: tokens(night).positive }}>Confirmed</Meta>
+      <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink, marginTop: 8 }}>
         {formatSlot(booking.slot_start)}
       </div>
-      <Meta night={false} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+      <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
         {booking.center_id} · tap for the receipt
       </Meta>
     </button>
@@ -378,7 +423,8 @@ function formatSlot(iso) {
 /* ── P08 — why this part ─────────────────────────────────────────────────── */
 
 function WhyThisPart({ detail, top, back, go }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   if (!top) {
     return (
       <>
@@ -402,19 +448,19 @@ function WhyThisPart({ detail, top, back, go }) {
     <>
       <ScreenHeader
         title={cap(m.label)} back={back}
-        right={<Pill night={false}>{top.severity}{days != null ? ` · ${days}d` : ""}</Pill>}
+        right={<Pill night={night}>{top.severity}{days != null ? ` · ${days}d` : ""}</Pill>}
       />
       <div style={{ padding: "20px 18px 28px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           <span style={{ fontFamily: MONO, fontSize: 38, fontWeight: 600, color: t.ink, letterSpacing: "-0.02em" }}>
             {top.failure_prob != null ? top.failure_prob.toFixed(2) : "—"}
           </span>
-          <Meta night={false}>model confidence</Meta>
+          <Meta night={night}>model confidence</Meta>
         </div>
 
         <div style={{ marginTop: 20 }}>
           <Headline
-            night={false} size={21} title="Why we think so"
+            night={night} size={21} title="Why we think so"
             body={`Your ${m.signalName} has been ${m.dir} on an unchanged route. That pattern is wear, not weather.`}
           />
         </div>
@@ -424,9 +470,9 @@ function WhyThisPart({ detail, top, back, go }) {
           marginTop: 18, border: `1px solid ${t.edge}`, borderRadius: 14,
           padding: 16, background: t.card,
         }}>
-          <Spark night={false} w={340} h={64} values={values} tone={ACCENT} />
+          <Spark night={night} w={340} h={64} values={values} tone={ACCENT} />
           <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
-            <Meta night={false} style={{ textTransform: "none" }}>
+            <Meta night={night} style={{ textTransform: "none" }}>
               {m.signalName} · last 24 h
             </Meta>
             {latest != null && (
@@ -438,7 +484,7 @@ function WhyThisPart({ detail, top, back, go }) {
         </div>
 
         <div style={{ marginTop: 20 }}>
-          <Meta night={false}>Trouble codes</Meta>
+          <Meta night={night}>Trouble codes</Meta>
           <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
             {dtcs.length ? dtcs.map((c) => (
               <span key={c} style={{
@@ -448,7 +494,7 @@ function WhyThisPart({ detail, top, back, go }) {
                 {c} active
               </span>
             )) : (
-              <span style={{ fontFamily: SANS, fontSize: 13.5, color: t.dim }}>
+              <span style={{ fontFamily: SANS, fontSize: 13, color: t.dim }}>
                 None fired yet — this is a trend, caught before a code sets.
               </span>
             )}
@@ -456,14 +502,14 @@ function WhyThisPart({ detail, top, back, go }) {
         </div>
 
         <div style={{ marginTop: 22 }}>
-          <CostRows night={false} rows={[
+          <CostRows night={night} rows={[
             { label: "Repair now", value: inr(repair), strong: true },
             { label: "If it fails on road", value: inr(breakdown), tone: "bad", strong: true },
           ]} />
         </div>
 
         <div style={{ marginTop: 18 }}>
-          <PrimaryButton night={false} onClick={() => go("agent")}>Show me slots</PrimaryButton>
+          <PrimaryButton night={night} onClick={() => go("agent")}>Show me slots</PrimaryButton>
         </div>
       </div>
     </>
@@ -475,7 +521,8 @@ function WhyThisPart({ detail, top, back, go }) {
 /** The live conversation, and the only path to a booking. Same endpoints the
  *  console's chat uses, so the transcript persists and the agent remembers. */
 function AgentScreen({ vin, back, onBooked }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   const [messages, setMessages] = useState([]);
   const [session, setSession] = useState(null);
   const [input, setInput] = useState("");
@@ -538,7 +585,7 @@ function AgentScreen({ vin, back, onBooked }) {
     <>
       <ScreenHeader
         title="AutoSaarthi agent" back={back}
-        right={<Meta night={false}>{busy ? "thinking" : "live"}</Meta>}
+        right={<Meta night={night}>{busy ? "thinking" : "live"}</Meta>}
       />
 
       <div style={{ padding: "16px 16px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -559,7 +606,7 @@ function AgentScreen({ vin, back, onBooked }) {
           yes produces. */}
       {slot && !done && (
         <div style={{ padding: "4px 16px 0" }}>
-          <Meta night={false}>Soonest slot</Meta>
+          <Meta night={night}>Soonest slot</Meta>
           <div style={{
             marginTop: 6, border: `1px solid ${t.edge}`, borderRadius: 12,
             padding: "12px 14px", background: t.card, display: "flex",
@@ -569,7 +616,7 @@ function AgentScreen({ vin, back, onBooked }) {
               <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 600, color: t.ink }}>
                 {formatSlot(slot.slot_start)}
               </div>
-              <Meta night={false} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+              <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
                 {slot.center_name || slot.center_id}
               </Meta>
             </div>
@@ -577,8 +624,8 @@ function AgentScreen({ vin, back, onBooked }) {
               onClick={() => send("yes, book it")}
               disabled={busy}
               style={{
-                border: "none", borderRadius: 10, padding: "10px 14px", background: ACCENT,
-                color: "#fff", fontFamily: SANS, fontSize: 13.5, fontWeight: 600,
+                border: "none", borderRadius: 10, padding: "10px 14px", background: color.accentDeep,
+                color: color.onAccent, fontFamily: SANS, fontSize: 13, fontWeight: 600,
                 cursor: busy ? "not-allowed" : "pointer", whiteSpace: "nowrap",
               }}
             >
@@ -609,7 +656,7 @@ function AgentScreen({ vin, back, onBooked }) {
             disabled={done || busy || !input.trim()}
             aria-label="Send"
             style={{
-              border: "none", borderRadius: 12, width: 46, background: ACCENT, color: "#fff",
+              border: "none", borderRadius: 12, width: 46, background: color.accentDeep, color: color.onAccent,
               cursor: done || busy ? "not-allowed" : "pointer", opacity: input.trim() ? 1 : 0.5,
             }}
           >
@@ -624,7 +671,8 @@ function AgentScreen({ vin, back, onBooked }) {
 }
 
 function Bubble({ m }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   const mine = m.role === "user";
   const bad = m.role === "system";
   return (
@@ -632,14 +680,14 @@ function Bubble({ m }) {
       <div style={{
         maxWidth: "84%", borderRadius: 16,
         borderBottomRightRadius: mine ? 5 : 16, borderBottomLeftRadius: mine ? 16 : 5,
-        padding: "11px 14px", fontFamily: SANS, fontSize: 14.5, lineHeight: 1.5,
-        background: mine ? ACCENT : bad ? t.pillBg : t.card,
-        color: mine ? "#fff" : bad ? t.pillInk : t.ink,
+        padding: "11px 14px", fontFamily: SANS, fontSize: 14, lineHeight: 1.5,
+        background: mine ? color.accentDeep : bad ? t.pillBg : t.card,
+        color: mine ? color.onAccent : bad ? t.pillInk : t.ink,
         border: mine || bad ? "none" : `1px solid ${t.edge}`,
       }}>
         {m.grounded_in > 0 && (
           <div style={{ marginBottom: 5 }}>
-            <Meta night={false} style={{ fontSize: 9.5, color: "#1f9d55" }}>
+            <Meta night={night} style={{ fontSize: 11, color: tokens(night).positive }}>
               from {m.grounded_in} facts about your car
             </Meta>
           </div>
@@ -651,7 +699,8 @@ function Bubble({ m }) {
 }
 
 function TypingDots() {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   return (
     <div style={{ display: "flex", justifyContent: "flex-start" }}>
       <div style={{
@@ -671,7 +720,8 @@ function TypingDots() {
 /* ── P12 — receipt ───────────────────────────────────────────────────────── */
 
 function Booked({ detail, top, booking, back }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   const m = top ? meta(top.component) : null;
   const [repair] = top ? (ECONOMICS[top.component] || [3000]) : [null];
 
@@ -680,16 +730,16 @@ function Booked({ detail, top, booking, back }) {
       <ScreenHeader title="Booking" back={back} />
       <div style={{ padding: "22px 18px 28px" }}>
         <div style={{
-          borderRadius: 18, padding: 22, background: "#eaf7ee", border: `1px solid #cfe8d8`,
+          borderRadius: 18, padding: 22, background: tokens(night).okBg, border: `1px solid ${tokens(night).okBorder}`,
         }}>
-          <Meta night={false} style={{ color: "#1f9d55" }}>Confirmed</Meta>
-          <div style={{ fontFamily: SANS, fontSize: 26, fontWeight: 700, color: t.ink, marginTop: 8, lineHeight: 1.2 }}>
+          <Meta night={night} style={{ color: tokens(night).positive }}>Confirmed</Meta>
+          <div style={{ fontFamily: SANS, fontSize: 27, fontWeight: 700, color: t.ink, marginTop: 8, lineHeight: 1.2 }}>
             {formatSlot(booking?.slot_start)}
           </div>
         </div>
 
         <div style={{ marginTop: 20 }}>
-          <CostRows night={false} rows={[
+          <CostRows night={night} rows={[
             { label: "Service centre", value: booking?.center_id || "—" },
             ...(m ? [{ label: "Work", value: cap(m.label) }] : []),
             ...(repair ? [{ label: "Estimate", value: inr(repair), strong: true }] : []),
@@ -698,13 +748,13 @@ function Booked({ detail, top, booking, back }) {
           ]} />
         </div>
 
-        <p style={{ fontFamily: SANS, fontSize: 13.5, color: t.dim, marginTop: 18, lineHeight: 1.55 }}>
+        <p style={{ fontFamily: SANS, fontSize: 13, color: t.dim, marginTop: 18, lineHeight: 1.55 }}>
           The centre has the slot held against your vehicle. You'll get a reminder the day
           before, and the car will show it on the dash when you next park.
         </p>
 
         <div style={{ marginTop: 18 }}>
-          <GhostButton night={false} onClick={back}>Back to my car</GhostButton>
+          <GhostButton night={night} onClick={back}>Back to my car</GhostButton>
         </div>
       </div>
     </>
@@ -714,14 +764,15 @@ function Booked({ detail, top, booking, back }) {
 /* ── P19 — history ───────────────────────────────────────────────────────── */
 
 function History({ detail, back }) {
-  const t = tokens(false);
+  const night = useNight();
+  const t = tokens(night);
   const rows = detail.maintenance_history || [];
   return (
     <>
       <ScreenHeader title="Service history" back={back} />
       <div style={{ padding: "18px 18px 28px" }}>
         {rows.length === 0 ? (
-          <p style={{ fontFamily: SANS, fontSize: 14.5, color: t.dim }}>
+          <p style={{ fontFamily: SANS, fontSize: 14, color: t.dim }}>
             No service visits on record for this vehicle yet.
           </p>
         ) : (
@@ -738,7 +789,7 @@ function History({ detail, back }) {
                     <span style={{ fontFamily: MONO, fontSize: 14, color: t.ink }}>{inr(h.cost)}</span>
                   )}
                 </div>
-                <Meta night={false} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+                <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
                   {formatDate(h.date)}
                   {h.km_at_service ? ` · ${Number(h.km_at_service).toLocaleString("en-IN")} km` : ""}
                 </Meta>

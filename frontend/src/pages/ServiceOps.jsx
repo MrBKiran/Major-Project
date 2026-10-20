@@ -55,7 +55,7 @@ function DemandForecast() {
       <div className="space-y-5">
         <SkeletonStatRow />
         <Card title="Centres">
-          <p className="mb-3 flex items-center gap-2 text-[12.5px] text-slate-500">
+          <p className="mb-3 flex items-center gap-2 text-label text-fg-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-accent pulse-soft" />
             Fitting a real SARIMAX per centre — a few seconds…
           </p>
@@ -97,17 +97,17 @@ function DemandForecast() {
                 onClick={() => setSelected(c.center_id)}
                 className={`rounded-lg border px-3 py-2.5 text-left transition duration-150 active:scale-[0.97] ${
                   selected === c.center_id
-                    ? "border-accent/60 bg-ink-700"
-                    : "border-edge bg-ink-700/40 hover:-translate-y-0.5 hover:border-slate-600"
+                    ? "border-accent/60 bg-surface-inset"
+                    : "border-border bg-surface-inset/40 hover:-translate-y-0.5 hover:border-fg-subtle"
                 }`}
               >
-                <div className="font-mono text-[11px] text-slate-500">{c.center_id}</div>
-                <div className={`num mt-0.5 text-lg font-semibold ${
-                  c.mean_utilisation > 0.9 ? "text-p1" : c.mean_utilisation > 0.8 ? "text-p2" : "text-slate-200"
+                <div className="font-mono text-caption text-fg-muted">{c.center_id}</div>
+                <div className={`num mt-0.5 text-title-sm font-semibold ${
+                  c.mean_utilisation > 0.9 ? "text-p1" : c.mean_utilisation > 0.8 ? "text-p2" : "text-fg"
                 }`}>
                   {(c.mean_utilisation * 100).toFixed(0)}%
                 </div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-caption text-fg-muted">
                   cap {c.capacity}/day
                   {c.overloaded_days.length > 0 && (
                     <span className="ml-1.5 text-p1">· {c.overloaded_days.length} over</span>
@@ -140,7 +140,7 @@ function DemandForecast() {
               </ComposedChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-3 text-[11px] text-slate-500">
+          <p className="mt-3 text-caption text-fg-muted">
             <span className="inline-block h-2 w-2 rounded-full bg-chart-baseline" /> baseline demand ·{" "}
             <span className="inline-block h-2 w-2 rounded-full bg-chart-predicted" /> jobs the predictive system already expects ·{" "}
             <span className="inline-block h-2 w-2 rounded-full bg-chart-capacity" /> bay capacity
@@ -150,9 +150,9 @@ function DemandForecast() {
 
       {forecast.redistribution.length > 0 && (
         <Card title="Redistribution suggestions" subtitle="Same-city centres with spare capacity on an overloaded day">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-body-sm">
             <thead>
-              <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wider text-slate-500">
+              <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
                 <th className="pb-2 font-medium">Date</th>
                 <th className="pb-2 font-medium">Overloaded centre</th>
                 <th className="pb-2 text-right font-medium">Overflow</th>
@@ -162,11 +162,11 @@ function DemandForecast() {
             </thead>
             <tbody>
               {forecast.redistribution.map((r, i) => (
-                <tr key={i} className="border-b border-edge/50 last:border-0">
-                  <td className="py-2 text-slate-400">{formatDate(r.date)}</td>
-                  <td className="py-2 font-mono text-[12px] text-slate-300">{r.from_center}</td>
+                <tr key={i} className="border-b border-border/50 last:border-0">
+                  <td className="py-2 text-fg-tertiary">{formatDate(r.date)}</td>
+                  <td className="py-2 font-mono text-label text-fg-secondary">{r.from_center}</td>
                   <td className="num py-2 text-right text-p2">+{r.overflow_jobs}</td>
-                  <td className="py-2 pl-4 font-mono text-[12px] text-slate-300">{r.to_center}</td>
+                  <td className="py-2 pl-4 font-mono text-label text-fg-secondary">{r.to_center}</td>
                   <td className="num py-2 text-right text-ok">{r.spare_capacity}</td>
                 </tr>
               ))}
@@ -196,9 +196,9 @@ function Appointments() {
       {data.appointments.length === 0 ? (
         <Empty>No appointments booked yet.</Empty>
       ) : (
-        <table className="w-full text-[13px]">
+        <table className="w-full text-body-sm">
           <thead>
-            <tr className="border-b border-edge text-left text-[11px] uppercase tracking-wider text-slate-500">
+            <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
               <th className="pb-2 font-medium">Vehicle</th>
               <th className="pb-2 font-medium">Centre</th>
               <th className="pb-2 font-medium">Slot</th>
@@ -220,17 +220,17 @@ const STATUS_TONE = { booked: "good", held: "warn", cancelled: "danger" };
 
 export function AppointmentRow({ appointment: a }) {
   return (
-    <tr className="border-b border-edge/50 last:border-0">
+    <tr className="border-b border-border/50 last:border-0">
       <td className="py-2.5">
-        <div className="text-slate-200">{a.model}</div>
-        <div className="font-mono text-[11px] text-slate-500">{a.vin}</div>
+        <div className="text-fg">{a.model}</div>
+        <div className="font-mono text-caption text-fg-muted">{a.vin}</div>
       </td>
-      <td className="py-2.5 text-slate-400">{a.center_name}</td>
-      <td className="py-2.5 text-slate-400">{formatSlot(a.slot_start)}</td>
+      <td className="py-2.5 text-fg-tertiary">{a.center_name}</td>
+      <td className="py-2.5 text-fg-tertiary">{formatSlot(a.slot_start)}</td>
       <td className="py-2.5">
         <Badge tone={STATUS_TONE[a.status] ?? "slate"}>{humanize(a.status)}</Badge>
       </td>
-      <td className="py-2.5 text-right text-[12px] text-slate-500">
+      <td className="py-2.5 text-right text-label text-fg-muted">
         {a.created_by_agent ? humanize(a.created_by_agent) : "Manual"}
       </td>
     </tr>

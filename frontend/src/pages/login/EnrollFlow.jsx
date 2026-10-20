@@ -74,8 +74,8 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
     return (
       <div className="space-y-3">
         <ErrorNote>{error}</ErrorNote>
-        {!error && <p className="text-[13px] text-slate-500">Preparing…</p>}
-        {onCancel && <button onClick={onCancel} className="text-[12px] text-slate-500 hover:text-slate-300">← back</button>}
+        {!error && <p className="text-body-sm text-fg-muted">Preparing…</p>}
+        {onCancel && <button onClick={onCancel} className="text-label text-fg-muted hover:text-fg-secondary">← back</button>}
       </div>
     );
   }
@@ -83,11 +83,11 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
   if (stage === "codes") {
     return (
       <div className="animate-in space-y-4">
-        <p className="text-[13px] text-slate-300">
+        <p className="text-body-sm text-fg-secondary">
           Two-step verification is on. Keep these recovery codes somewhere safe — each one signs you in once if you lose your
           phone, and they will not be shown again.
         </p>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-edge bg-ink-900 p-3 font-mono text-[13px] text-slate-200">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface-page p-3 font-mono text-body-sm text-fg">
           {result.recovery_codes.map((c) => (
             <span key={c}>{c}</span>
           ))}
@@ -96,7 +96,7 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
           <button type="button" className={ghostCls} onClick={() => navigator.clipboard?.writeText(codesText())}>Copy</button>
           <button type="button" className={ghostCls} onClick={download}>Download</button>
         </div>
-        <label className="flex items-center gap-2 text-[12px] text-slate-400">
+        <label className="flex items-center gap-2 text-label text-fg-tertiary">
           <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
           I have saved these codes
         </label>
@@ -109,7 +109,7 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
 
   return (
     <form onSubmit={confirm} className="animate-in space-y-4">
-      <p className="text-[13px] text-slate-400">
+      <p className="text-body-sm text-fg-tertiary">
         Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…), then enter the
         6-digit code it shows.
       </p>
@@ -117,11 +117,11 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
         {qr ? (
           <img src={qr} alt="QR code for your authenticator app" width={176} height={176} className="rounded-lg bg-white p-1" />
         ) : (
-          <div className="h-[176px] w-[176px] rounded-lg bg-ink-900" />
+          <div className="h-[176px] w-[176px] rounded-lg bg-surface-page" />
         )}
       </div>
       <Field label="Or type this key">
-        <code className="block select-all break-all rounded-lg border border-edge bg-ink-900 px-3 py-2 font-mono text-[12px] tracking-wider text-slate-300">
+        <code className="block select-all break-all rounded-lg border border-border bg-surface-page px-3 py-2 font-mono text-label tracking-wider text-fg-secondary">
           {setup.secret.match(/.{1,4}/g).join(" ")}
         </code>
       </Field>
@@ -135,7 +135,7 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
           autoFocus
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-          className={`${inputCls} text-center font-mono text-lg tracking-[0.4em]`}
+          className={`${inputCls} text-center font-mono text-title-sm tracking-[0.4em]`}
           placeholder="••••••"
         />
       </Field>
@@ -144,7 +144,7 @@ export default function EnrollFlow({ onDone, onCancel, currentPassword }) {
         {busy ? "Checking…" : "Turn on"}
       </button>
       {onCancel && (
-        <button type="button" onClick={onCancel} className="text-[12px] text-slate-500 hover:text-slate-300">
+        <button type="button" onClick={onCancel} className="text-label text-fg-muted hover:text-fg-secondary">
           ← back
         </button>
       )}

@@ -27,6 +27,10 @@ export const color = {
   ok: "#1f9d55",
   okInk: "#15703a",
   amber: "#e8a33d",
+  onAccent: "#ffffff",        // text on accentDeep — never on plain accent (3.4:1)
+  // The head unit's physical bezel: hardware, not theme, so the same by day and night.
+  deviceRing: "#16181d",
+  deviceRingEdge: "#2a2e34",
 };
 
 export const day = {
@@ -44,18 +48,27 @@ export const day = {
   fgSecondary: "#2f343c",
   fgTertiary: "#3c424b",
   fgMuted: "#4e5560",
-  fgSubtle: "#646a74",
+  fgSubtle: "#5e646d",       // the head unit's darker step: it must also clear 4.5:1 on its chrome
   fgDecorative: "#a8aeb6",    // fills only, never text
-  // The owner/head-unit kit's own dim and faint steps. Within a few percent of
-  // fgMuted/fgSubtle but not equal; merging them changes pixels, so it is a
-  // reviewed Phase 2 change, not something this file does silently.
-  fgDevice: "#474d56",
-  fgDeviceFaint: "#5e646d",
 
   pillBg: "#ffe1dc",
   pillInk: "#b32f13",
   amberBg: "#fdf0d9",
   amberInk: "#8a5200",
+
+  // Status text that means "fine": the brand green is 3.5:1 on white, too
+  // faint for the 11px labels it carries.
+  positive: "#15703a",
+  okBg: "#eaf7ee",
+  okBorder: "#cfe8d8",
+  alertBg: "#fdeae5",         // the driving-mode alert band
+  control: "#eef0f2",         // neutral button fill: hover, disabled
+  chrome: "#e4e7ea",          // head unit status bar and dock
+  bezel: "#c9ced4",
+  hatchGround: "#e6e9ec",     // under the hatch that stands in for map tiles
+  icon: "#9aa1ab",            // decorative strokes
+  marker: "#7ab8e8",          // "you are here"
+  link: "#b8320f",            // orange text: accentInk by day
 };
 
 export const night = {
@@ -74,13 +87,23 @@ export const night = {
   fgMuted: "#a7aeb8",
   fgSubtle: "#959ca6",
   fgDecorative: "#4a5059",
-  fgDevice: "#a7aeb8",
-  fgDeviceFaint: "#8b929c",
 
   pillBg: "#3a1a12",
   pillInk: "#ff8060",
   amberBg: "#3a2c12",
   amberInk: "#e8a33d",
+
+  positive: "#1f9d55",
+  okBg: "#12251a",
+  okBorder: "#1f3a29",
+  alertBg: "#241512",
+  control: "#1c2026",
+  chrome: "#0a0c0f",
+  bezel: "#000000",
+  hatchGround: "#101317",
+  icon: "#7a828c",
+  marker: "#5aa9e6",
+  link: "#ff8060",            // accentInk is ~3.2:1 on the night page
 };
 
 export function mode(night_) {
@@ -103,7 +126,7 @@ export const font = {
   mono: "'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace",
 };
 
-/** Nine steps, replacing 27 sizes in use before. Line heights are unitless. */
+/** Ten steps, replacing 27 sizes in use before. Line heights are unitless. */
 export const text = {
   caption: { size: 11, lineHeight: 1.45 },
   label: { size: 12, lineHeight: 1.45 },
@@ -114,6 +137,7 @@ export const text = {
   title: { size: 21, lineHeight: 1.25 },
   display: { size: 27, lineHeight: 1.15 },
   displayLg: { size: 31, lineHeight: 1.1 },
+  hero: { size: 38, lineHeight: 1.05 },     // the one big number on a screen
 };
 
 export const radius = {

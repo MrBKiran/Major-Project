@@ -31,21 +31,51 @@ the head unit, and (from Phase 4) the React Native app and its Android Auto scre
 `p3` `ok` and their `*Ink` variants. **Charts:** `grid` `axis` `baseline` `predicted` `capacity`
 `temp` `volt`.
 
-**Type — nine steps** (was 27 sizes): `caption` 11 · `label` 12 · `bodySm` 13 · `body` 14 ·
-`lead` 15 · `titleSm` 17 · `title` 21 · `display` 27 · `displayLg` 31 — Tailwind `text-caption` …
+**Type — ten steps** (was 27 sizes): `caption` 11 · `label` 12 · `bodySm` 13 · `body` 14 ·
+`lead` 15 · `titleSm` 17 · `title` 21 · `display` 27 · `displayLg` 31 · `hero` 38 — Tailwind `text-caption` …
 
 **Radius:** `chip` 6 · `control` 10 · `card` 12 · `panel` 16 · `pill` 999 — `rounded-card` …
 
-## Phase 2: the reviewed changes
+## Enforced by tests
 
-Phase 1 changed no pixel on purpose (proven against the baseline). These do change pixels, so each
-lands in Phase 2 with its screenshot diff reviewed:
+These are not conventions; a test fails when they are broken.
 
-| Change | From → to |
+| Rule | Guard |
 |---|---|
-| Merge the owner kit's text greys into the console's | `fgDevice` #474d56 → `fgMuted` #4e5560 · `fgDeviceFaint` #5e646d → `fgSubtle` #646a74 |
-| Snap font sizes to the scale | 9.5 / 10 / 10.5 → 11 · 12.5 → 12 · 13.5 → 13 · 14.5 → 14 · 15.5 → 15 · 19 / 20 / 22 → 21 · 26 → 27 · 38 (clock) stays a one-off |
-| Snap radii | 2 / 4 / 5 → `chip` · 8 / 10 → `control` · 14 → `card` or `panel` · 18 → `panel` |
-| Replace ~25 one-off hex values in `device.jsx` / `OwnerApp.jsx` / `InCarConsole.jsx` | hatch grounds, button fills, bezel greys → tokens (new tokens only where nothing fits) |
-| Move pages off `ink-*` / `slate-*` | then delete the legacy names from `build-css.js` |
-| Night mode for the owner web app | `data-theme="night"` already flips every semantic token |
+| No hex colour in a component | `frontend/src/test/no-raw-colours.test.js` |
+| The brand orange is never text (2.9:1 on the page) — text uses `accentInk` / `link` | same file |
+| Every font size is a step on the scale | `frontend/src/test/type-scale.test.js` |
+| No retired `ink-*` / `slate-*` / `edge` names | `frontend/src/test/legacy-names.test.js` |
+| Every token has day + night; every text token ≥ 4.5:1 on every surface, in both modes | `packages/tokens/src/tokens.test.js` |
+| White text sits on `accentDeep` (4.8:1), never the plain accent (3.4:1) | same file |
+| Every screen matches the reviewed screenshots | `frontend/e2e/baseline.spec.js` |
+
+## Night mode
+
+The head unit has a night toggle; the owner's phone (`/app`) follows the device's light/dark
+setting. Two routes, one set of tokens: inline-styled owner components read `useNight()` (a
+context, `frontend/src/night.jsx`) and call `tokens(night)`; Tailwind-built screens (sign-in) flip
+through `data-theme="night"` on `<html>`, which `tokens.css` answers. The console and its preview of
+the phone stay light.
+
+## Components
+
+* **`Dialog`** (`ui.jsx`) — every modal. Named by its title, `aria-modal`, Escape and click-outside
+  close it, focus moves in and returns to the opener, Tab is kept inside, rendered in a portal on
+  `<body>` (inside a page, the entrance animation's stacking context put it under the header).
+* **`SectionNav`** / **`AccountMenu`** (`App.jsx`) — `aria-current="page"` on the current section;
+  the account menu is a disclosure (`aria-expanded`, `aria-controls`, Escape, click outside).
+* Keyboard focus: one global `:focus-visible` ring in `accentDeep` (4.2:1 on the page).
+
+## What Phase 2 changed, reviewed screen by screen
+
+| Change | Notes |
+|---|---|
+| Pages moved to semantic names; legacy names deleted | pixel-identical, then guarded |
+| Owner-kit greys merged with the console's | merged toward the **darker** `#5e646d` — the lighter one failed 4.5:1 on the head unit's chrome (a token test caught the original plan) |
+| Font sizes snapped: 27 → 10 steps (`hero` 38 added for the one big number) | |
+| ~25 one-off colours → tokens (`positive`, `okBg`, `alertBg`, `control`, `chrome`, `bezel`, `hatchGround`, `icon`, `marker`, `link`, `onAccent`, device ring) | |
+| Status green `#1f9d55` → `positive` `#15703a` | was 3.5:1 for 11px text |
+| White-on-orange buttons → `accentDeep` | head unit Book, owner Send, chat bubbles |
+| Orange text → `accentInk` (day) / `link` (night) | was 2.9:1 |
+| Radii | left on Tailwind's own scale in the console; the owner kit keeps its values — snapping them was churn with no user-visible gain, so it was not done |

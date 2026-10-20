@@ -7,7 +7,7 @@
  * neither should have to be special-cased here by name.
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
 import Login from "./pages/Login.jsx";
@@ -110,62 +110,21 @@ function Shell() {
   const active = tab === "account" ? { id: "account" } : TABS.find((t) => t.id === tab);
   const Page = tab === "account" ? Account : tab ? PAGES[tab] : null;
 
-  const btnRefs = useRef({});
-  const [indicator, setIndicator] = useState(null);
-
-  useLayoutEffect(() => {
-    const el = btnRefs.current[tab];
-    if (!el) return setIndicator(null);
-    setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
-  }, [tab, visibleTabs.length]);
-
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-10 border-b border-edge bg-ink-900/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-border bg-surface-page/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-6 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/15 text-[13px] font-bold text-accent">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/15 text-body-sm font-bold text-accent-ink">
               A
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-[15px] font-bold tracking-tight text-slate-100">AutoSaarthi</span>
-              <span className="text-[11px] text-slate-500">OEM Console</span>
+              <span className="text-lead font-bold tracking-tight text-fg-strong">AutoSaarthi</span>
+              <span className="text-caption text-fg-muted">OEM Console</span>
             </div>
           </div>
 
-          <nav className="relative flex flex-1 gap-1">
-            {visibleTabs.length === 0 ? (
-              <span className="px-3 py-1.5 text-[13px] text-slate-600">
-                Your role has no console pages assigned.
-              </span>
-            ) : (
-              <>
-                {indicator && (
-                  <span
-                    aria-hidden
-                    className="absolute top-0 h-full rounded-lg bg-ink-700 transition-[left,width] duration-300 ease-out"
-                    style={{ left: indicator.left, width: indicator.width }}
-                  />
-                )}
-                {visibleTabs.map((t) => (
-                  <button
-                    key={t.id}
-                    ref={(el) => { btnRefs.current[t.id] = el; }}
-                    onClick={() => setTab(t.id)}
-                    className={`relative z-[1] flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200 ${
-                      tab === t.id ? "text-slate-100" : "text-slate-500 hover:text-slate-300"
-                    }`}
-                  >
-                    <span className={tab === t.id ? "text-accent" : "text-slate-600"}>
-                      <Icon id={t.id} />
-                    </span>
-                    {t.label}
-                    {!PAGES[t.id] && <span className="ml-0.5 text-[10px] text-slate-600">·</span>}
-                  </button>
-                ))}
-              </>
-            )}
-          </nav>
+          <SectionNav tabs={visibleTabs} active={tab} onSelect={setTab} />
 
           <AccountMenu onAccount={() => setTab("account")} />
         </div>
@@ -173,19 +132,19 @@ function Shell() {
 
       <main className="mx-auto max-w-[1400px] px-6 py-6">
         {!active ? (
-          <div className="rounded-xl border border-dashed border-edge px-6 py-16 text-center">
-            <p className="text-sm text-slate-400">No page available for this role.</p>
+          <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center">
+            <p className="text-body text-fg-tertiary">No page available for this role.</p>
           </div>
         ) : Page ? (
           <div key={tab} className="animate-in">
             <Page />
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-edge px-6 py-16 text-center">
-            <p className="text-sm text-slate-400">
+          <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center">
+            <p className="text-body text-fg-tertiary">
               Slide {active.slide} — {active.label}
             </p>
-            <p className="mt-1 text-xs text-slate-600">Not built yet.</p>
+            <p className="mt-1 text-label text-fg-subtle">Not built yet.</p>
           </div>
         )}
       </main>
@@ -193,11 +152,80 @@ function Shell() {
   );
 }
 
-function AccountMenu({ onAccount }) {
+/** The console's sections. The current one is marked with aria-current, not
+ *  only by colour — colour alone tells a screen-reader user nothing. */
+export function SectionNav({ tabs, active, onSelect }) {
+  const btnRefs = useRef({});
+  const [indicator, setIndicator] = useState(null);
+
+  useLayoutEffect(() => {
+    const el = btnRefs.current[active];
+    if (!el) return setIndicator(null);
+    setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [active, tabs.length]);
+
+  return (
+    <nav aria-label="Console sections" className="relative flex flex-1 gap-1">
+      {tabs.length === 0 ? (
+        <span className="px-3 py-1.5 text-body-sm text-fg-subtle">
+          Your role has no console pages assigned.
+        </span>
+      ) : (
+        <>
+          {indicator && (
+            <span
+              aria-hidden
+              className="absolute top-0 h-full rounded-lg bg-surface-inset transition-[left,width] duration-300 ease-out"
+              style={{ left: indicator.left, width: indicator.width }}
+            />
+          )}
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              ref={(el) => { btnRefs.current[t.id] = el; }}
+              onClick={() => onSelect(t.id)}
+              aria-current={active === t.id ? "page" : undefined}
+              className={`relative z-[1] flex items-center gap-2 rounded-lg px-3 py-1.5 text-body-sm font-medium transition-colors duration-200 ${
+                active === t.id ? "text-fg-strong" : "text-fg-muted hover:text-fg-secondary"
+              }`}
+            >
+              <span aria-hidden className={active === t.id ? "text-accent-ink" : "text-fg-subtle"}>
+                <Icon id={t.id} />
+              </span>
+              {t.label}
+              {!PAGES[t.id] && <span className="ml-0.5 text-caption text-fg-subtle">·</span>}
+            </button>
+          ))}
+        </>
+      )}
+    </nav>
+  );
+}
+
+export function AccountMenu({ onAccount }) {
   const { principal, logout, switchMembership } = useAuth();
   const [open, setOpen] = useState(false);
   const [memberships, setMemberships] = useState(null);
   const [busy, setBusy] = useState(false);
+  const root = useRef(null);
+  const trigger = useRef(null);
+  const menuId = useId();
+
+  // A click anywhere else closes it, as every menu on the platform does.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (!root.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  function onKeyDown(e) {
+    if (e.key === "Escape" && open) {
+      setOpen(false);
+      trigger.current?.focus();
+    }
+  }
 
   async function toggle() {
     const next = !open;
@@ -218,33 +246,37 @@ function AccountMenu({ onAccount }) {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={root} onKeyDown={onKeyDown}>
       <button
+        ref={trigger}
+        type="button"
         onClick={toggle}
+        aria-expanded={open}
+        aria-controls={menuId}
         className={`flex items-center gap-2.5 rounded-lg border px-3 py-1.5 text-left transition-colors duration-200 ${
-          open ? "border-slate-500 bg-ink-700" : "border-edge bg-ink-800 hover:border-slate-600"
+          open ? "border-fg-muted bg-surface-inset" : "border-border bg-surface-card hover:border-fg-subtle"
         }`}
       >
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-bold text-accent-ink">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-caption font-bold text-accent-ink">
           {principal.full_name?.[0]?.toUpperCase() ?? "?"}
         </div>
         {/* min-w-0 + truncate: the org/role line is user data of unbounded
             length, and without a bound it pushed the caret out of the header
             and clipped mid-word ("vehicle owne") instead of eliding. */}
         <div className="min-w-0 leading-tight">
-          <div className="truncate text-[12px] font-medium text-slate-200">{principal.full_name}</div>
-          <div className="truncate text-[10px] text-slate-500">
+          <div className="truncate text-label font-medium text-fg">{principal.full_name}</div>
+          <div className="truncate text-caption text-fg-muted">
             {principal.org.name} · {principal.role.replace(/_/g, " ")}
           </div>
         </div>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          className={`ml-0.5 text-slate-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}>
+          className={`ml-0.5 text-fg-muted transition-transform duration-200 ${open ? "rotate-180" : ""}`}>
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
 
       {open && (
-        <div className="animate-in absolute right-0 top-[calc(100%+6px)] w-64 origin-top-right rounded-lg border border-edge bg-ink-800 py-1.5 shadow-xl">
+        <div id={menuId} className="animate-in absolute right-0 top-[calc(100%+6px)] w-64 origin-top-right rounded-lg border border-border bg-surface-card py-1.5 shadow-xl">
           {memberships === null ? (
             <div className="space-y-1.5 px-3 py-2">
               <div className="skeleton h-3 w-32" />
@@ -252,7 +284,7 @@ function AccountMenu({ onAccount }) {
             </div>
           ) : (
             <>
-              <div className="px-3 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
+              <div className="px-3 pb-1.5 pt-1 text-caption font-medium uppercase tracking-wider text-fg-muted">
                 Switch role
               </div>
               {memberships.map((m) => (
@@ -260,27 +292,27 @@ function AccountMenu({ onAccount }) {
                   key={`${m.org_id}:${m.role}`}
                   disabled={busy}
                   onClick={() => pick(m)}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-[12px] transition-colors duration-150 hover:bg-ink-700 disabled:opacity-50 ${
-                    m.active ? "text-accent" : "text-slate-300"
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-label transition-colors duration-150 hover:bg-surface-inset disabled:opacity-50 ${
+                    m.active ? "text-accent-ink" : "text-fg-secondary"
                   }`}
                 >
                   <span>
                     {m.org_name}
-                    <span className="ml-1.5 text-slate-500">— {m.role.replace(/_/g, " ")}</span>
+                    <span className="ml-1.5 text-fg-muted">— {m.role.replace(/_/g, " ")}</span>
                   </span>
                   {m.active && <span>✓</span>}
                 </button>
               ))}
-              <div className="my-1.5 border-t border-edge" />
+              <div className="my-1.5 border-t border-border" />
               <button
                 onClick={() => { setOpen(false); onAccount(); }}
-                className="w-full px-3 py-2 text-left text-[12px] text-slate-300 transition-colors duration-150 hover:bg-ink-700"
+                className="w-full px-3 py-2 text-left text-label text-fg-secondary transition-colors duration-150 hover:bg-surface-inset"
               >
                 Account &amp; security
               </button>
               <button
                 onClick={logout}
-                className="w-full px-3 py-2 text-left text-[12px] text-p1 transition-colors duration-150 hover:bg-p1/10"
+                className="w-full px-3 py-2 text-left text-label text-p1 transition-colors duration-150 hover:bg-p1/10"
               >
                 Log out (all sessions)
               </button>
@@ -297,7 +329,7 @@ function Gate() {
   if (status === "loading") {
     return (
       <div className="flex min-h-full items-center justify-center">
-        <div className="flex items-center gap-2.5 text-[13px] text-slate-500">
+        <div className="flex items-center gap-2.5 text-body-sm text-fg-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-accent pulse-soft" />
           Loading…
         </div>

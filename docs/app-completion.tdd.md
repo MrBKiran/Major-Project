@@ -110,11 +110,51 @@ Mutations: a legacy value drifting, a night token missing, a hand-edited `tokens
   because the baseline captured the screen mid-request.
 * Workspace hoisting split Vitest from jsdom; fixed by declaring shared test tools at the root.
 
+---
+
+## Phase 2 — web refinement
+
+See [design-system.md](design-system.md) for what changed and why. Every visual change was reviewed
+as a screenshot diff before the baseline accepted it.
+
+| Behaviour | Tests | RED | GREEN |
+|---|---|---|---|
+| Pages on semantic names; retired names never return | `src/test/legacy-names.test.js` (22) + token test | token test 1 failed (legacy defined) | pixel-identical baseline, then guarded |
+| No hex colour in components; orange never used as text | `src/test/no-raw-colours.test.js` | 3 files with hex; 6 with orange text | passing |
+| New tokens: positive / alert / chrome / hatch / control / link / white-on-accentDeep, all contrast-checked | `packages/tokens` (+16) | 18 failed (missing), then 6 (`link`) | 87 passing |
+| Every font size on the 10-step scale | `src/test/type-scale.test.js` | 16 files off-scale | passing |
+| Healthy owner screen: readable sensor names; no empty sparklines | `OwnerApp.test.jsx`, `packages/core/src/signals.test.js` | 2 failed; core import missing | passing |
+| Owner can sign out on the phone (not in the console preview) | `OwnerApp.test.jsx` | 1 failed | passing; verified live, reload stays signed out |
+| Dialog: named, modal, Escape, click-outside, focus in/out, Tab trapped, portalled | `src/ui.test.jsx` (7) | all failed (no component); portal test failed after a live finding | 7 passing |
+| Section nav `aria-current`; account menu `aria-expanded`/Escape/click-outside | `src/App.test.jsx` (6) | 3 behavioural fails | 6 passing; verified with a real keyboard |
+| Owner night mode follows the phone; links readable at night; sign-out stays dark | `src/night.test.jsx` (7) | module missing; then link `'' ≠ rgb(255,128,96)`; nested theme `undefined ≠ night` | 7 passing; verified on an emulated dark phone |
+
+Totals: frontend **136**, core **34**, tokens **87**; backend unchanged at 616. Build OK, baseline 8/8.
+
+### Found along the way
+
+* **The planned grey merge would have broken contrast.** Merging the owner kit's darker grey into
+  the console's lighter one dropped it below 4.5:1 on the head unit's status bar; the token tests
+  failed, and the merge went the other way.
+* **Three more contrast failures** surfaced by tokenising: status green 3.5:1, white on orange
+  3.4:1, orange text 2.9:1 — all fixed and now guarded.
+* **Dialogs rendered under the sticky header** in a short window (seen live): the page's entrance
+  animation makes a stacking context. Dialogs are now portalled to `<body>`.
+* **A night-mode bug the first fix did not fix.** Signing out turned a dark phone's sign-in screen
+  light; "restore the previous value" failed because React runs a child's effect before its
+  parent's. A count of night holders replaced it.
+* **A RED for the wrong reason, twice:** a test asserted text content on an icon-only button, and a
+  test looked for a link the mock data never rendered. Both fixed before the production change.
+* **The screenshot baseline itself needed work.** A 0.2 per-pixel colour tolerance hid hue changes
+  (tightened to 0.02, re-baselined from the committed code); loading text, not just skeletons, had
+  to be waited for. The two sign-in screens flickered through every fix tried (a bold glyph, a
+  label mid-transition), so they are checked for content instead of pixels — recorded, not hidden.
+
 ### Reproduce
 
 ```bash
 cd backend && python -m pytest tests -q                 # 616 passed (needs the backend on :8010)
-npm test                                                # all workspaces: frontend 25, core 26, tokens 87
+npm test                                                # all workspaces: frontend 136, core 34, tokens 87
 npm run tokens                                          # regenerate tokens.css after editing the source
 cd frontend && npx playwright test                      # 8 screens vs. baseline (dev servers running)
 ```

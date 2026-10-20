@@ -125,7 +125,7 @@ function TwoStepCard() {
   const done = () => { setMode("view"); setCode(""); setPassword(""); setError(null); load(); };
 
   if (!status) {
-    return <Card title="Two-step verification"><p className="px-5 py-4 text-[13px] text-slate-500">{error || "Loading…"}</p></Card>;
+    return <Card title="Two-step verification"><p className="px-5 py-4 text-body-sm text-fg-muted">{error || "Loading…"}</p></Card>;
   }
 
   return (
@@ -137,7 +137,7 @@ function TwoStepCard() {
       <div className="space-y-4 px-5 py-4">
         {mode === "confirm" && (
           <form onSubmit={(e) => { e.preventDefault(); setMode("enroll"); }} className="space-y-3">
-            <p className="text-[13px] text-slate-400">
+            <p className="text-body-sm text-fg-tertiary">
               Confirm your password to continue — setting this up changes how your account is protected.
             </p>
             <Field label="Password">
@@ -157,7 +157,7 @@ function TwoStepCard() {
 
         {mode === "view" && !status.enrolled && (
           <>
-            <p className="text-[13px] text-slate-400">
+            <p className="text-body-sm text-fg-tertiary">
               {status.required
                 ? "Your role requires two-step verification."
                 : "Adds a second check to your sign-in, so a stolen password is not enough."}
@@ -173,7 +173,7 @@ function TwoStepCard() {
 
         {mode === "view" && status.enrolled && (
           <>
-            <p className="text-[13px] text-slate-400">
+            <p className="text-body-sm text-fg-tertiary">
               You have {status.recovery_codes_remaining} recovery code{status.recovery_codes_remaining === 1 ? "" : "s"} left.
               {status.recovery_codes_remaining <= 3 && " Consider generating new ones."}
             </p>
@@ -196,7 +196,7 @@ function TwoStepCard() {
             <Field label="Code from your authenticator app">
               <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required autoFocus
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                className={`${inputCls} max-w-[12rem] text-center font-mono text-lg tracking-[0.4em]`} />
+                className={`${inputCls} max-w-[12rem] text-center font-mono text-title-sm tracking-[0.4em]`} />
             </Field>
             <ErrorNote>{error}</ErrorNote>
             <div className="flex gap-2">
@@ -210,8 +210,8 @@ function TwoStepCard() {
 
         {mode === "show" && fresh && (
           <div className="space-y-3">
-            <p className="text-[13px] text-slate-300">Your new recovery codes. The old ones no longer work, and these will not be shown again.</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-edge bg-ink-900 p-3 font-mono text-[13px] text-slate-200">
+            <p className="text-body-sm text-fg-secondary">Your new recovery codes. The old ones no longer work, and these will not be shown again.</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-surface-page p-3 font-mono text-body-sm text-fg">
               {fresh.map((c) => <span key={c}>{c}</span>)}
             </div>
             <div className="flex gap-2">

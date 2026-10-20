@@ -32,9 +32,12 @@ import { color, day, font, night } from "@autosaarthi/tokens";
 // Values come from the shared tokens (packages/tokens); this kit keeps its own
 // short names so the primitives below read the way they always have.
 const kit = (m) => ({
-  page: m.page, panel: m.panel, card: m.card, ink: m.fg, dim: m.fgDevice, faint: m.fgDeviceFaint,
+  page: m.page, panel: m.panel, card: m.card, ink: m.fg, dim: m.fgMuted, faint: m.fgSubtle,
   edge: m.border, hatch: m.hatch, pillBg: m.pillBg, pillInk: m.pillInk,
   amberBg: m.amberBg, amberInk: m.amberInk,
+  positive: m.positive, okBg: m.okBg, okBorder: m.okBorder, alertBg: m.alertBg,
+  control: m.control, chrome: m.chrome, bezel: m.bezel, hatchGround: m.hatchGround,
+  icon: m.icon, marker: m.marker, link: m.link,
 });
 const T = { day: kit(day), night: kit(night) };
 
@@ -52,7 +55,7 @@ export function hatchStyle(night, size = 10) {
   const t = tokens(night);
   return {
     background: `repeating-linear-gradient(135deg, ${t.hatch} 0 ${size / 2}px, transparent ${size / 2}px ${size}px)`,
-    backgroundColor: night ? "#101317" : "#e6e9ec",
+    backgroundColor: t.hatchGround,
   };
 }
 
@@ -111,15 +114,14 @@ export function PrimaryButton({ children, onClick, disabled, night, note, full =
         disabled={disabled}
         style={{
           width: "100%", borderRadius: 14,
-          // 19px, not 17: white on the deck's orange is 3.4:1, which clears the
-          // 3:1 bar for large text but not the 4.5:1 for small — and 17px bold
-          // sits just under the large threshold. Nudging up is the right fix
-          // rather than darkening the brand orange, since this is a control
-          // aimed at from a driver's seat, where bigger was already correct.
-          padding: "18px 20px", fontFamily: SANS, fontSize: 19, fontWeight: 600,
+          // White sits on accentDeep (4.8:1), not the deck's orange (3.4:1):
+          // 19px at weight 600 is not unambiguously "large text", and a
+          // control aimed at from a driver's seat should not rely on the
+          // 3:1 allowance. 19px stays — bigger is right in a car anyway.
+          padding: "18px 20px", fontFamily: SANS, fontSize: 21, fontWeight: 600,
           cursor: disabled ? "not-allowed" : "pointer",
-          background: disabled ? (night ? "#1c2026" : "#f2f3f5") : ACCENT,
-          color: disabled ? t.faint : "#fff",
+          background: disabled ? t.control : color.accentDeep,
+          color: disabled ? t.faint : color.onAccent,
           border: disabled ? `1px solid ${t.edge}` : "none",
           transition: "filter 140ms ease, transform 140ms ease",
         }}
@@ -153,7 +155,7 @@ export function GhostButton({ children, onClick, night, grow = false, disabled =
         cursor: disabled ? "not-allowed" : "pointer",
         transition: "background 140ms ease",
       }}
-      onMouseEnter={(e) => !disabled && (e.currentTarget.style.background = night ? "#1c2026" : "#eef0f2")}
+      onMouseEnter={(e) => !disabled && (e.currentTarget.style.background = t.control)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
       {children}
@@ -177,7 +179,7 @@ export function Headline({ title, body, night, size = 34 }) {
       </h1>
       {body && (
         <p style={{
-          fontFamily: SANS, fontSize: 15.5, lineHeight: 1.5, color: t.dim,
+          fontFamily: SANS, fontSize: 15, lineHeight: 1.5, color: t.dim,
           marginTop: 12, marginBottom: 0,
         }}>
           {body}
@@ -238,7 +240,7 @@ export function Spark({ values, night, w = 100, h = 26, tone }) {
     <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
       <polyline
         points={pts} fill="none" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round"
-        stroke={tone || (night ? "#7a828c" : "#9aa1ab")}
+        stroke={tone || tokens(night).icon}
       />
     </svg>
   );
@@ -256,8 +258,8 @@ export function PhoneFrame({ children, night, statusBar }) {
       style={{
         width: 412, height: 915, borderRadius: 34, overflow: "hidden",
         background: t.page, color: t.ink,
-        border: `1px solid ${night ? "#000" : "#c9ced4"}`,
-        boxShadow: "0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 9px #16181d, 0 0 0 10px #2a2e34",
+        border: `1px solid ${t.bezel}`,
+        boxShadow: `0 30px 70px -20px rgba(0,0,0,0.55), 0 0 0 9px ${color.deviceRing}, 0 0 0 10px ${color.deviceRingEdge}`,
         display: "flex", flexDirection: "column", position: "relative",
       }}
     >
@@ -293,7 +295,7 @@ export function CarFrame({ children, night, status, dock }) {
       // a scroll is worse than one that is slightly the wrong shape.
       width: "100%", aspectRatio: "16 / 9", minHeight: 560,
       borderRadius: 16, overflow: "hidden", background: t.page, color: t.ink,
-      border: `1px solid ${night ? "#000" : "#c9ced4"}`,
+      border: `1px solid ${t.bezel}`,
       boxShadow: "0 24px 60px -24px rgba(0,0,0,0.6)",
       display: "flex", flexDirection: "column",
     }}>
@@ -309,7 +311,7 @@ export function CarStatusBar({ night, left, center, right }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "10px 20px", background: night ? "#0a0c0f" : "#e4e7ea",
+      padding: "10px 20px", background: t.chrome,
       borderBottom: `1px solid ${t.edge}`, flexShrink: 0, gap: 16,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>{left}</div>
@@ -324,14 +326,14 @@ export function CarDock({ night, climate = "climate 22.0", media = "media strip"
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 16, padding: "10px 20px",
-      background: night ? "#0a0c0f" : "#e4e7ea", borderTop: `1px solid ${t.edge}`, flexShrink: 0,
+      background: t.chrome, borderTop: `1px solid ${t.edge}`, flexShrink: 0,
     }}>
       <Meta night={night} style={{ textTransform: "none", whiteSpace: "nowrap" }}>{climate}</Meta>
       <div style={{
         flex: 1, height: 34, borderRadius: 8, display: "grid", placeItems: "center",
         ...hatchStyle(night, 8), border: `1px dashed ${t.edge}`,
       }}>
-        <Meta night={night} style={{ textTransform: "none", fontSize: 10 }}>{media}</Meta>
+        <Meta night={night} style={{ textTransform: "none", fontSize: 11 }}>{media}</Meta>
       </div>
       <Meta night={night} style={{ textTransform: "none", whiteSpace: "nowrap" }}>{right}</Meta>
     </div>
@@ -347,7 +349,7 @@ export function MapPane({ night, chip, lines = [] }) {
         <div style={{
           position: "absolute", top: 16, left: 16, background: t.card,
           border: `1px solid ${t.edge}`, borderRadius: 10, padding: "9px 14px",
-          fontFamily: SANS, fontSize: 13.5, color: t.ink,
+          fontFamily: SANS, fontSize: 13, color: t.ink,
           boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
         }}>
           {chip}
@@ -359,7 +361,7 @@ export function MapPane({ night, chip, lines = [] }) {
       }}>
         <div>
           {lines.map((l) => (
-            <div key={l} style={{ fontFamily: MONO, fontSize: 12.5, color: t.faint, lineHeight: 1.7 }}>{l}</div>
+            <div key={l} style={{ fontFamily: MONO, fontSize: 12, color: t.faint, lineHeight: 1.7 }}>{l}</div>
           ))}
         </div>
       </div>

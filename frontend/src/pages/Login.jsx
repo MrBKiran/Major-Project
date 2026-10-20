@@ -107,26 +107,26 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
       <div className="animate-in relative w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-lg font-bold text-accent-ink shadow-[0_0_0_1px_rgba(255,74,35,0.22)]">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-title-sm font-bold text-accent-ink shadow-[0_0_0_1px_rgba(255,74,35,0.22)]">
             A
           </div>
-          <h1 className="text-lg font-semibold text-slate-100">AutoSaarthi</h1>
-          <p className="mt-1 text-[13px] text-slate-500">{SUBTITLES[surface]}</p>
+          <h1 className="text-title-sm font-semibold text-fg-strong">AutoSaarthi</h1>
+          <p className="mt-1 text-body-sm text-fg-muted">{SUBTITLES[surface]}</p>
         </div>
 
-        <div className="rounded-xl border border-edge bg-ink-800/90 p-6 shadow-[0_18px_50px_-28px_rgba(0,0,0,0.25)] backdrop-blur">
+        <div className="rounded-xl border border-border bg-surface-card/90 p-6 shadow-[0_18px_50px_-28px_rgba(0,0,0,0.25)] backdrop-blur">
           {stage.name === "credentials" && (
             <div className="space-y-4">
               {tabs.length > 1 && (
-                <div role="tablist" className="grid grid-flow-col gap-1 rounded-lg bg-ink-900 p-1">
+                <div role="tablist" className="grid grid-flow-col gap-1 rounded-lg bg-surface-page p-1">
                   {tabs.map((m) => (
                     <button
                       key={m}
                       role="tab"
                       aria-selected={active === m}
                       onClick={() => { setMethod(m); setError(null); }}
-                      className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition ${
-                        active === m ? "bg-ink-700 text-slate-100" : "text-slate-500 hover:text-slate-300"
+                      className={`rounded-md px-3 py-1.5 text-label font-medium transition ${
+                        active === m ? "bg-surface-inset text-fg-strong" : "text-fg-muted hover:text-fg-secondary"
                       }`}
                     >
                       {METHOD_LABELS[m] ?? m}
@@ -171,10 +171,10 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
               {methods.includes("google") && config?.google_client_id && (
                 <>
-                  <div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-slate-600">
-                    <span className="h-px flex-1 bg-edge" />
+                  <div className="flex items-center gap-3 text-caption uppercase tracking-wider text-fg-subtle">
+                    <span className="h-px flex-1 bg-border" />
                     or
-                    <span className="h-px flex-1 bg-edge" />
+                    <span className="h-px flex-1 bg-border" />
                   </div>
                   <GoogleButton
                     clientId={config.google_client_id}
@@ -188,23 +188,23 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
           {stage.name === "choose" && (
             <div className="animate-in space-y-3">
-              <p className="text-[13px] text-slate-400">This account holds more than one role. Continue as:</p>
+              <p className="text-body-sm text-fg-tertiary">This account holds more than one role. Continue as:</p>
               {stage.memberships.map((m, i) => (
                 <button
                   key={`${m.org_id}:${m.role}`}
                   disabled={busy}
                   onClick={() => run(() => stage.again(m), stage.again)}
                   style={{ animationDelay: `${i * 50}ms` }}
-                  className="animate-in w-full rounded-lg border border-edge bg-ink-700/60 px-4 py-3 text-left transition duration-150 hover:-translate-y-0.5 hover:border-accent/50 hover:bg-ink-700 active:translate-y-0 disabled:opacity-50"
+                  className="animate-in w-full rounded-lg border border-border bg-surface-inset/60 px-4 py-3 text-left transition duration-150 hover:-translate-y-0.5 hover:border-accent/50 hover:bg-surface-inset active:translate-y-0 disabled:opacity-50"
                 >
-                  <div className="text-[13px] font-medium text-slate-100">{m.org_name}</div>
-                  <div className="mt-0.5 text-[11px] uppercase tracking-wider text-slate-500">
+                  <div className="text-body-sm font-medium text-fg-strong">{m.org_name}</div>
+                  <div className="mt-0.5 text-caption uppercase tracking-wider text-fg-muted">
                     {m.role.replace(/_/g, " ")}
                   </div>
                 </button>
               ))}
               <ErrorNote>{error}</ErrorNote>
-              <button onClick={reset} className="text-[12px] text-slate-500 hover:text-slate-300">
+              <button onClick={reset} className="text-label text-fg-muted hover:text-fg-secondary">
                 ← back
               </button>
             </div>
@@ -221,7 +221,7 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
           {stage.name === "enroll" && (
             <div className="space-y-4">
-              <p className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[12px] text-slate-300">
+              <p className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-label text-fg-secondary">
                 Your role requires two-step verification. Set it up to finish signing in.
               </p>
               <EnrollFlow
@@ -232,9 +232,9 @@ export default function Login({ defaultMethod = "password", surface = "console" 
           )}
         </div>
 
-        <p className="mt-5 text-center text-[11px] text-slate-600">
+        <p className="mt-5 text-center text-caption text-fg-subtle">
           Local demo — every seeded account uses password{" "}
-          <code className="rounded bg-ink-800 px-1 py-0.5 font-mono text-slate-400">autosaarthi</code>
+          <code className="rounded bg-surface-card px-1 py-0.5 font-mono text-fg-tertiary">autosaarthi</code>
         </p>
       </div>
     </div>

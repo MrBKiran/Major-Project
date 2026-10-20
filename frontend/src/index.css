@@ -14,8 +14,8 @@ body,
 }
 
 body {
-  background: var(--color-ink-900);
-  color: var(--color-slate-200);
+  background: var(--color-surface-page);
+  color: var(--color-fg);
   font-family: var(--font-sans);
   font-feature-settings: "tnum" 1; /* tabular figures — numbers stop jittering */
 }
@@ -30,14 +30,25 @@ body {
    forgot it was a dashboard. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-ink-600) transparent;
+  scrollbar-color: var(--color-surface-inset-strong) transparent;
 }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: var(--color-ink-600); border-radius: 99px; }
-*::-webkit-scrollbar-thumb:hover { background: var(--color-edge); }
+*::-webkit-scrollbar-thumb { background: var(--color-surface-inset-strong); border-radius: 99px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--color-border); }
 
-::selection { background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: var(--color-slate-100); }
+/* Keyboard focus is always visible: only three inputs had a focus style, so a
+   keyboard user tabbing through the console could not see where they were.
+   :focus-visible keeps it off mouse clicks. Unlayered on purpose, so it wins
+   over `outline-none` utilities. accent-deep is 4.2:1 on the page (focus
+   indicators need 3:1). tabindex="-1" targets (a dialog panel focused in
+   code) are excluded — they are not stops a user tabs to. */
+:where(a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--color-accent-deep);
+  outline-offset: 2px;
+}
+
+::selection { background: color-mix(in srgb, var(--color-accent) 22%, transparent); color: var(--color-fg-strong); }
 
 /* Entrance choreography — every page and every card that opts in fades and
    rises into place once, on mount. Re-keying the element (App.jsx keys the
@@ -73,7 +84,7 @@ body {
   to { background-position: 300px 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, var(--color-ink-700) 25%, var(--color-ink-600) 37%, var(--color-ink-700) 63%);
+  background: linear-gradient(90deg, var(--color-surface-inset) 25%, var(--color-surface-inset-strong) 37%, var(--color-surface-inset) 63%);
   background-size: 600px 100%;
   animation: shimmer 1.6s linear infinite;
   border-radius: 6px;

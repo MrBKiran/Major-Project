@@ -17,10 +17,14 @@ import { useAuth } from "./auth/AuthContext.jsx";
 import Login from "./pages/Login.jsx";
 import OwnerApp from "./pages/OwnerApp.jsx";
 import { tokens, SANS } from "./device.jsx";
+import { usePageTheme, useSystemNight } from "./night.jsx";
 
 export default function MobileApp() {
   const { status, principal, logout } = useAuth();
-  const t = tokens(false);
+  // The whole of /app — sign-in included — follows the phone's light/dark setting.
+  const night = useSystemNight();
+  usePageTheme(night);
+  const t = tokens(night);
 
   if (status === "loading") {
     return (
@@ -45,10 +49,10 @@ export default function MobileApp() {
         background: t.page, padding: 28, textAlign: "center", fontFamily: SANS,
       }}>
         <div style={{ maxWidth: 340 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: t.ink, margin: 0 }}>
+          <h1 style={{ fontSize: 21, fontWeight: 700, color: t.ink, margin: 0 }}>
             This app is for vehicle owners
           </h1>
-          <p style={{ fontSize: 14.5, color: t.dim, lineHeight: 1.55, marginTop: 10 }}>
+          <p style={{ fontSize: 14, color: t.dim, lineHeight: 1.55, marginTop: 10 }}>
             You're signed in as {principal?.full_name} ({String(principal?.role || "").replace(/_/g, " ")}).
             The fleet, service and quality screens live in the console on a larger screen.
           </p>
