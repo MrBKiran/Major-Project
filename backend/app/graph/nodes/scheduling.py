@@ -113,6 +113,11 @@ async def run(state: FleetState) -> FleetState:
         held = await invoke(AGENT_ID, "scheduler.hold", {
             "center_id": best["center_id"], "slot_start": best["slot_start"], "vin": state["vin"],
         }, ctx)
+        existing = (held.data or {}).get("existing")
+        if existing:
+            return {**state, "booking": {"booked": True, "already_booked": True, **existing},
+                    "service_status": "booked",
+                    "completed": [*state.get("completed", []), "scheduling"]}
         if not (held.data or {}).get("held"):
             return {**state, "booking": {"booked": False, "reason": (held.data or {}).get("error")},
                     "completed": [*state.get("completed", []), "scheduling"]}

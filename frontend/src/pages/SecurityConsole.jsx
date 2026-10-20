@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { api, getToken } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { pluralize } from "@autosaarthi/core";
 import { Badge, Card, Empty, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
 const DECISION_TONE = { BLOCK: "danger", FLAG: "warn", ALLOW: "good", INVALID: "slate" };
@@ -137,13 +138,7 @@ export default function SecurityConsole() {
                   )}
                 </div>
               )}
-              <div className="mt-2.5 text-[11px] text-slate-500">
-                <span className="text-ok">{a.allow.length} allowed</span>
-                {a.deny.length > 0 && <span className="ml-2 text-p1">{a.deny.length} explicit deny</span>}
-                {Object.keys(a.rate_limits).length > 0 && (
-                  <span className="ml-2 text-slate-500">{Object.keys(a.rate_limits).length} rate limit(s)</span>
-                )}
-              </div>
+              <PolicyCounts agent={a} />
             </div>
           ))}
         </div>
@@ -173,6 +168,17 @@ export default function SecurityConsole() {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+export function PolicyCounts({ agent }) {
+  const limits = Object.keys(agent.rate_limits).length;
+  return (
+    <div className="mt-2.5 text-[11px] text-slate-500">
+      <span className="text-ok">{agent.allow.length} allowed</span>
+      {agent.deny.length > 0 && <span className="ml-2 text-p1">{agent.deny.length} explicit deny</span>}
+      {limits > 0 && <span className="ml-2 text-slate-500">{pluralize(limits, "rate limit")}</span>}
     </div>
   );
 }
@@ -289,7 +295,7 @@ function RedTeam({ onDone }) {
                           </Badge>
                           <Badge tone={DECISION_TONE[res.final_decision] ?? "slate"}>{res.final_decision}</Badge>
                           {res.quarantined && <Badge tone="danger" pulse>agent quarantined</Badge>}
-                          <span className="text-slate-600">caught by layer(s): {res.caught_by_layers?.join(", ")}</span>
+                          <span className="text-slate-600">caught by {res.caught_by_layers?.length === 1 ? "layer" : "layers"} {res.caught_by_layers?.join(", ")}</span>
                         </div>
                         {res.recovery && <p className="mt-1.5 text-slate-500">{res.recovery}</p>}
                       </>

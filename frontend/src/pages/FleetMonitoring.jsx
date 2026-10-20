@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { api, ApiError } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { formatDate } from "@autosaarthi/core";
 import { Badge, Card, CHART, Empty, SeverityPill, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
 export default function FleetMonitoring() {
@@ -368,7 +369,7 @@ function VehicleDetail({ vin, canTrigger }) {
                 <li key={i} className="rounded-lg border border-edge bg-ink-700/40 px-3 py-2 text-[12px]">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-slate-200">{h.service_type}</span>
-                    <span className="text-slate-500">{h.date}</span>
+                    <span className="text-slate-500">{formatDate(h.date)}</span>
                   </div>
                   {h.components_replaced?.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">

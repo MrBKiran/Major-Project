@@ -33,7 +33,7 @@ export default function MobileApp() {
     );
   }
 
-  if (status !== "authed") return <Login defaultMethod="phone_otp" />;
+  if (status !== "authed") return <Login defaultMethod="phone_otp" surface="owner" />;
 
   // The console gates this tab on scope_kind; the standalone route has to make
   // the same call rather than trusting the URL. Staff reaching /app get told

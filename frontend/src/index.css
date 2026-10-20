@@ -1,74 +1,11 @@
 @import "tailwindcss";
 
-/* The wireframe deck's palette, applied app-wide.
-   ─────────────────────────────────────────────────────────────────────────
-   The app was dark and the imported device screens are light, which left a
-   light head unit sitting inside dark dashboard chrome — coherent nowhere.
-   Rather than rewrite ~244 hardcoded colour classes across seven files, the
-   two ramps those classes already speak are REDEFINED here.
-
-   `ink-*` is the surface ramp and keeps its direction: 900 is the page, 800
-   a card, 700/600 progressively stronger insets.
-
-   `slate-*` is Tailwind's own scale, overridden because every use of it in
-   this codebase is foreground text (145 of 161 usages) where a HIGHER number
-   meant MORE prominent against a dark ground. That relationship is what the
-   pages actually encode, so it is preserved and re-pointed at a light ground:
-   slate-100 is now near-black, slate-500 the mid grey most body copy uses.
-   Inverting the ramp rather than the individual classes is what keeps every
-   page's existing hierarchy intact through the theme change.
-
-   The few bg-/border-slate uses (16) land on greys that still read correctly
-   because the ramp stays monotonic. */
-@theme {
-  --color-ink-900: #eceef1;   /* page */
-  --color-ink-800: #ffffff;   /* card */
-  --color-ink-700: #f3f4f6;   /* inset / hover */
-  --color-ink-600: #e4e7ea;   /* stronger inset, scrollbar thumb */
-  --color-edge: #d7dade;
-
-  /* Foreground ramp — high number = more prominent, as the pages assume.
-     Every step through slate-600 clears 4.5:1 on white, because the dim end
-     of this ramp carries 11px annotations (the "~2.4d" day counts), not just
-     large text. A straight visual inversion of the dark values landed those
-     at 2.6:1 — legible against #0a0e14, unreadable against white. */
-  --color-slate-100: #0f1115;   /* 18.6:1 */
-  --color-slate-200: #16181d;   /* 17.2:1 */
-  --color-slate-300: #2f343c;   /* 11.7:1 */
-  --color-slate-400: #3c424b;
-  --color-slate-500: #4e5560;   /* 7.6:1 — body dim, the most-used step */
-  --color-slate-600: #646a74;   /* 5.4:1 on white, 4.8:1 on a tinted row */
-  --color-slate-700: #a8aeb6;   /* decorative fills only, never text */
-
-  /* Severity, retuned for a light ground: the dark-theme reds and ambers are
-     too bright on white to read as urgent — they vibrate instead. */
-  --color-p1: #d8391a;
-  --color-p2: #b26a00;
-  --color-p3: #0b7fc4;
-  --color-ok: #1f9d55;
-  --color-accent: #ff4a23;    /* the deck's CTA orange, replacing the purple */
-
-  /* Badge text. A badge paints its own hue at ~10% over white and then writes
-     in that same hue, which on a dark ground was high-contrast (pale ink on a
-     near-black wash) and on a light one collapses to ~3:1. These are the same
-     hues taken dark enough to clear 4.5:1 against their own tint, so the badge
-     keeps reading as one colour family instead of being redrawn. */
-  --color-p1-ink: #b32f13;
-  --color-p2-ink: #8a5200;
-  --color-p3-ink: #0a6394;
-  --color-ok-ink: #15703a;
-  --color-accent-ink: #b8320f;
-
-  /* Small solid buttons. White on the deck's #ff4a23 is 3.4:1 — fine for the
-     head unit's 17px hero CTA (large text needs 3:1) and short of the 4.5:1
-     small text needs, which is what the 12px buttons on the staff screens
-     are. Deepening the fill for those keeps white legible without repainting
-     the brand orange everywhere it is genuinely large. */
-  --color-accent-deep: #d13c14;
-
-  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
-}
+/* Colours, type and radius come from the shared tokens (packages/tokens),
+   generated into tokens.css — edit packages/tokens/src/index.js, then
+   `npm run tokens`. The ink and slate names the pages still use are kept
+   there with their original values until Phase 2 moves the pages onto the
+   semantic names (surface-*, fg-*, border). */
+@import "@autosaarthi/tokens/tokens.css";
 
 html,
 body,

@@ -4,6 +4,7 @@
  * without anyone having to remember which folder a Card lives in.
  */
 
+import { chart, day } from "@autosaarthi/tokens";
 import { useEffect, useRef, useState } from "react";
 
 export const SEVERITY = {
@@ -21,24 +22,24 @@ export const SEVERITY = {
  * made the earlier charts look like they belonged to a different app.
  */
 export const CHART = {
-  grid: "#e4e7ea",
-  axis: "#9aa1ab",
+  grid: chart.grid,
+  axis: chart.axis,
   tooltip: {
-    background: "#ffffff",
-    border: "1px solid #d7dade",
+    background: day.card,
+    border: `1px solid ${day.border}`,
     borderRadius: 10,
     fontSize: 12,
-    color: "#16181d",
+    color: day.fg,
     boxShadow: "0 8px 24px -12px rgba(0,0,0,0.25)",
   },
   // Series stay saturated enough to carry meaning against white; the token
   // severity colors are tuned for text contrast and go muddy as thin lines.
   series: {
-    temp: "#e07a00",
-    volt: "#1f9d55",
-    baseline: "#2563eb",
-    predicted: "#e07a00",
-    capacity: "#d8391a",
+    temp: chart.temp,
+    volt: chart.volt,
+    baseline: chart.baseline,
+    predicted: chart.predicted,
+    capacity: chart.capacity,
   },
 };
 

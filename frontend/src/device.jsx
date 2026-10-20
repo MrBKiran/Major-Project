@@ -18,6 +18,8 @@
  * at the driver. Pass `night` and every primitive flips.
  */
 
+import { color, day, font, night } from "@autosaarthi/tokens";
+
 /**
  * `dim` and `faint` are one deliberate departure from the deck. A wireframe
  * greys its chrome to say "not the point"; the deck's dock labels and metadata
@@ -27,35 +29,17 @@
  * they actually sit on — the dock, not the page — in each mode. Hierarchy is
  * preserved (ink > dim > faint); only the floor moved.
  */
-const T = {
-  day: {
-    page: "#eceef1",
-    panel: "#f6f7f8",
-    card: "#ffffff",
-    ink: "#16181d",
-    dim: "#474d56",
-    faint: "#5e646d",
-    edge: "#d7dade",
-    hatch: "#dfe2e6",
-    pillBg: "#ffe1dc",
-    pillInk: "#b32f13",
-  },
-  night: {
-    page: "#0d0f12",
-    panel: "#14171c",
-    card: "#191d23",
-    ink: "#e8eaed",
-    dim: "#a7aeb8",
-    faint: "#8b929c",
-    edge: "#272c33",
-    hatch: "#1a1e24",
-    pillBg: "#3a1a12",
-    pillInk: "#ff8060",
-  },
-};
+// Values come from the shared tokens (packages/tokens); this kit keeps its own
+// short names so the primitives below read the way they always have.
+const kit = (m) => ({
+  page: m.page, panel: m.panel, card: m.card, ink: m.fg, dim: m.fgDevice, faint: m.fgDeviceFaint,
+  edge: m.border, hatch: m.hatch, pillBg: m.pillBg, pillInk: m.pillInk,
+  amberBg: m.amberBg, amberInk: m.amberInk,
+});
+const T = { day: kit(day), night: kit(night) };
 
-export const ACCENT = "#ff4a23";
-export const AMBER = "#e8a33d";
+export const ACCENT = color.accent;
+export const AMBER = color.amber;
 
 export function tokens(night) {
   return night ? T.night : T.day;
@@ -74,8 +58,8 @@ export function hatchStyle(night, size = 10) {
 
 /* ── type ────────────────────────────────────────────────────────────────── */
 
-export const MONO = "'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace";
-export const SANS = "'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+export const MONO = font.mono;
+export const SANS = font.sans;
 
 /** Metadata voice: uppercase mono, letterspaced. Everything the owner is not
  *  meant to read closely — status, labels, provenance — wears this. */
@@ -98,8 +82,8 @@ export function Meta({ children, night, style = {}, className = "" }) {
 
 export function Pill({ children, night, tone = "p1" }) {
   const t = tokens(night);
-  const bg = tone === "amber" ? (night ? "#3a2c12" : "#fdf0d9") : t.pillBg;
-  const ink = tone === "amber" ? AMBER : t.pillInk;
+  const bg = tone === "amber" ? t.amberBg : t.pillBg;
+  const ink = tone === "amber" ? t.amberInk : t.pillInk;
   return (
     <span
       style={{

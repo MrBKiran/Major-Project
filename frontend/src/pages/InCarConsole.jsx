@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
+import { drivingLeft, formatDays, formatINR as inr, serviceDue } from "@autosaarthi/core";
 import { Empty, Skeleton } from "../ui.jsx";
 import {
   CarDock, CarFrame, CarStatusBar, CostRows, GhostButton, Headline, MapPane,
@@ -62,7 +63,6 @@ const ECONOMICS = {
   fuel_injector: [5600, 21000], oil_pump: [3800, 26000],
 };
 
-const inr = (n) => `₹${n.toLocaleString("en-IN")}`;
 
 export default function InCarConsole() {
   const [fleet, setFleet] = useState(null);
@@ -246,12 +246,18 @@ export default function InCarConsole() {
 
 /* ── the three states ────────────────────────────────────────────────────── */
 
-function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowed, blockReason, booked, onBook }) {
+export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowed, blockReason, booked, onBook }) {
   const t = tokens(night);
   const pred = result?.prediction;
 
   if (result?.error) {
     return <MapPane night={night} lines={["console unavailable", result.error]} />;
+  }
+
+  // No verdict yet. Not the healthy screen: that would tell the driver of a
+  // car with a P1 fault that everything is fine for the length of a request.
+  if (!result) {
+    return <MapPane night={night} lines={["checking with the service agent…"]} />;
   }
 
   // Healthy: the deck's quiet screen. No card, no dock intrusion, nothing to do.
@@ -278,7 +284,7 @@ function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowe
     );
   }
 
-  const days = pred.days_to_failure != null ? Math.round(pred.days_to_failure) : null;
+  const days = pred.days_to_failure;
   const [repair, breakdown] = ECONOMICS[pred.component] || [3000, 20000];
 
   // DRIVING — G7 caps the alert at one element, G6 blocks anything tappable.
@@ -293,7 +299,7 @@ function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowe
           <Pill night={night}>{pred.severity}</Pill>
           <span style={{ fontFamily: SANS, fontSize: 21, fontWeight: 500, color: t.ink, flex: 1 }}>
             {sentenceCase(label(pred.component))} service needed
-            {days != null ? ` within ${days} days` : ""}. I'll call you about it.
+            {days != null ? ` ${serviceDue(days)}` : ""}. I'll call you about it.
           </span>
           <Meta night={night}>voice · hands-free</Meta>
         </div>
@@ -314,7 +320,7 @@ function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowe
             </p>
             <div style={{ width: "100%", marginTop: 4 }}>
               <PrimaryButton night={night} disabled>
-                {days != null ? `Book service` : "Book service"}
+                Book service
               </PrimaryButton>
             </div>
             <Meta night={night} style={{
@@ -345,7 +351,7 @@ function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowe
           <div style={{ marginTop: 18 }}>
             <Headline
               night={night} size={27}
-              title={`${sentenceCase(label(pred.component))} ${isPlural(pred.component) ? "need" : "needs"} service${days != null ? ` within ${days} days` : ""}`}
+              title={`${sentenceCase(label(pred.component))} ${isPlural(pred.component) ? "need" : "needs"} service${days != null ? ` ${serviceDue(days)}` : ""}`}
               body="Details when you park."
             />
           </div>
@@ -370,7 +376,7 @@ function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowe
         padding: 26, display: "flex", flexDirection: "column", overflowY: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Pill night={night}>{pred.severity}{days != null ? ` · ${days} days` : ""}</Pill>
+          <Pill night={night}>{pred.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
           <Meta night={night}>service agent</Meta>
         </div>
 
@@ -380,7 +386,7 @@ function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowe
             title={`Your ${label(pred.component)} ${isPlural(pred.component) ? "are" : "is"} wearing out`}
             body={
               days != null
-                ? `About ${days} days of your driving left, on current use.`
+                ? `${drivingLeft(days)}, on current use.`
                 : "Wear is progressing on your current usage."
             }
           />

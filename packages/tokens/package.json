@@ -1,0 +1,18 @@
+{
+  "name": "@autosaarthi/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./tokens.css": "./tokens.css"
+  },
+  "scripts": {
+    "build": "node scripts/build-css.js",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

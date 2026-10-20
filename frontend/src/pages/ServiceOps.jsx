@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
+import { formatDate, formatSlot, humanize, pluralize } from "@autosaarthi/core";
 import { Badge, Card, CHART, Empty, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
 export default function ServiceOps() {
@@ -121,7 +122,7 @@ function DemandForecast() {
         <Card
           title={active.center_id}
           subtitle={`Forecast vs. capacity — ${active.model}`}
-          right={active.overloaded_days.length > 0 && <Badge tone="danger">{active.overloaded_days.length} day(s) over capacity</Badge>}
+          right={active.overloaded_days.length > 0 && <Badge tone="danger">{pluralize(active.overloaded_days.length, "day")} over capacity</Badge>}
         >
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -140,9 +141,9 @@ function DemandForecast() {
             </ResponsiveContainer>
           </div>
           <p className="mt-3 text-[11px] text-slate-500">
-            <span className="inline-block h-2 w-2 rounded-full bg-[#2563eb]" /> baseline demand ·{" "}
-            <span className="inline-block h-2 w-2 rounded-full bg-[#e07a00]" /> jobs the predictive system already expects ·{" "}
-            <span className="inline-block h-2 w-2 rounded-full bg-[#d8391a]" /> bay capacity
+            <span className="inline-block h-2 w-2 rounded-full bg-chart-baseline" /> baseline demand ·{" "}
+            <span className="inline-block h-2 w-2 rounded-full bg-chart-predicted" /> jobs the predictive system already expects ·{" "}
+            <span className="inline-block h-2 w-2 rounded-full bg-chart-capacity" /> bay capacity
           </p>
         </Card>
       )}
@@ -162,7 +163,7 @@ function DemandForecast() {
             <tbody>
               {forecast.redistribution.map((r, i) => (
                 <tr key={i} className="border-b border-edge/50 last:border-0">
-                  <td className="py-2 text-slate-400">{r.date}</td>
+                  <td className="py-2 text-slate-400">{formatDate(r.date)}</td>
                   <td className="py-2 font-mono text-[12px] text-slate-300">{r.from_center}</td>
                   <td className="num py-2 text-right text-p2">+{r.overflow_jobs}</td>
                   <td className="py-2 pl-4 font-mono text-[12px] text-slate-300">{r.to_center}</td>
@@ -206,27 +207,32 @@ function Appointments() {
             </tr>
           </thead>
           <tbody>
-            {data.appointments.map((a) => (
-              <tr key={a.id} className="border-b border-edge/50 last:border-0">
-                <td className="py-2.5">
-                  <div className="text-slate-200">{a.model}</div>
-                  <div className="font-mono text-[11px] text-slate-500">{a.vin}</div>
-                </td>
-                <td className="py-2.5 text-slate-400">{a.center_name}</td>
-                <td className="py-2.5 text-slate-400">{new Date(a.slot_start).toLocaleString()}</td>
-                <td className="py-2.5">
-                  <Badge tone={a.status === "confirmed" ? "good" : a.status === "cancelled" ? "danger" : "slate"}>
-                    {a.status}
-                  </Badge>
-                </td>
-                <td className="py-2.5 text-right text-[12px] text-slate-500">
-                  {a.created_by_agent ?? "manual"}
-                </td>
-              </tr>
-            ))}
+            {data.appointments.map((a) => <AppointmentRow key={a.id} appointment={a} />)}
           </tbody>
         </table>
       )}
     </Card>
+  );
+}
+
+// The scheduler's statuses (app/db/scheduling.py): held | booked | cancelled | completed.
+const STATUS_TONE = { booked: "good", held: "warn", cancelled: "danger" };
+
+export function AppointmentRow({ appointment: a }) {
+  return (
+    <tr className="border-b border-edge/50 last:border-0">
+      <td className="py-2.5">
+        <div className="text-slate-200">{a.model}</div>
+        <div className="font-mono text-[11px] text-slate-500">{a.vin}</div>
+      </td>
+      <td className="py-2.5 text-slate-400">{a.center_name}</td>
+      <td className="py-2.5 text-slate-400">{formatSlot(a.slot_start)}</td>
+      <td className="py-2.5">
+        <Badge tone={STATUS_TONE[a.status] ?? "slate"}>{humanize(a.status)}</Badge>
+      </td>
+      <td className="py-2.5 text-right text-[12px] text-slate-500">
+        {a.created_by_agent ? humanize(a.created_by_agent) : "Manual"}
+      </td>
+    </tr>
   );
 }

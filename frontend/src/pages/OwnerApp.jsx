@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { drivingLeft, formatDate, formatDays, formatINR, formatSlot as formatSlotTime } from "@autosaarthi/core";
 import {
   ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill, PhoneFrame,
   PhoneStatusBar, PrimaryButton, SANS, Spark, tokens,
@@ -53,7 +54,7 @@ const ECONOMICS = {
   fuel_injector: [5600, 21000], oil_pump: [3800, 26000],
 };
 
-const inr = (n) => `₹${Number(n).toLocaleString("en-IN")}`;
+const inr = formatINR;
 const meta = (c) => COMPONENT[c] || { label: String(c || "").replace(/_/g, " "), plural: false };
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -231,7 +232,7 @@ function Home({ detail, top, booking, go }) {
               key={i} dot={t.faint}
               title={cap(String(h.service_type || "service").replace(/_/g, " "))}
               sub={[
-                String(h.date || "").slice(0, 10),
+                h.date ? formatDate(h.date) : null,
                 h.km_at_service ? `${Number(h.km_at_service).toLocaleString("en-IN")} km` : null,
                 h.cost ? inr(h.cost) : null,
               ].filter(Boolean).join(" · ")}
@@ -302,11 +303,11 @@ function HealthyCard({ detail }) {
 /** The alert. Cost framing before technical detail, per strategies.yaml —
  *  and both escape hatches sit above the primary action, because an owner who
  *  feels cornered by a service prompt stops trusting every later one. */
-function NowCard({ top, go }) {
+export function NowCard({ top, go }) {
   const t = tokens(false);
   const m = meta(top.component);
   const [repair, breakdown] = ECONOMICS[top.component] || [3000, 20000];
-  const days = top.days_to_failure != null ? Math.round(top.days_to_failure) : null;
+  const days = top.days_to_failure;
 
   return (
     <div style={{
@@ -314,7 +315,7 @@ function NowCard({ top, go }) {
       boxShadow: "0 8px 30px -14px rgba(216,57,26,0.35)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Pill night={false}>{top.severity}{days != null ? ` · ${days} days` : ""}</Pill>
+        <Pill night={false}>{top.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
         <Meta night={false}>now</Meta>
       </div>
 
@@ -323,7 +324,7 @@ function NowCard({ top, go }) {
           night={false} size={26}
           title={`Your ${m.label} ${m.plural ? "are" : "is"} wearing out`}
           body={days != null
-            ? `About ${days} days of your driving left, on current use.`
+            ? `${drivingLeft(days)}, on current use.`
             : "Wear is progressing on your current usage."}
         />
       </div>
@@ -371,12 +372,7 @@ function BookedCard({ booking, onOpen }) {
 }
 
 function formatSlot(iso) {
-  if (!iso) return "Scheduled";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleString("en-IN", {
-    weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
-  });
+  return iso ? formatSlotTime(iso) : "Scheduled";
 }
 
 /* ── P08 — why this part ─────────────────────────────────────────────────── */
@@ -743,7 +739,7 @@ function History({ detail, back }) {
                   )}
                 </div>
                 <Meta night={false} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
-                  {String(h.date || "").slice(0, 10)}
+                  {formatDate(h.date)}
                   {h.km_at_service ? ` · ${Number(h.km_at_service).toLocaleString("en-IN")} km` : ""}
                 </Meta>
                 {Array.isArray(h.components_replaced) && h.components_replaced.length > 0 && (

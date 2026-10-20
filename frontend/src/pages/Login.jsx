@@ -29,7 +29,12 @@ import { ErrorNote, Field, inputCls, submitCls } from "./login/parts.jsx";
 
 const METHOD_LABELS = { password: "Email", phone_otp: "Phone" };
 
-export default function Login({ defaultMethod = "password" }) {
+const SUBTITLES = {
+  console: "Agentic predictive maintenance — OEM console",
+  owner: "Your car's health, and when it needs service",
+};
+
+export default function Login({ defaultMethod = "password", surface = "console" }) {
   const auth = useAuth();
   const [config, setConfig] = useState(null);
   const [method, setMethod] = useState(defaultMethod);
@@ -106,7 +111,7 @@ export default function Login({ defaultMethod = "password" }) {
             A
           </div>
           <h1 className="text-lg font-semibold text-slate-100">AutoSaarthi</h1>
-          <p className="mt-1 text-[13px] text-slate-500">Agentic predictive maintenance — OEM console</p>
+          <p className="mt-1 text-[13px] text-slate-500">{SUBTITLES[surface]}</p>
         </div>
 
         <div className="rounded-xl border border-edge bg-ink-800/90 p-6 shadow-[0_18px_50px_-28px_rgba(0,0,0,0.25)] backdrop-blur">

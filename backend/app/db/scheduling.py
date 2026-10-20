@@ -7,10 +7,13 @@ import uuid
 
 from sqlalchemy import select
 
-from app.db.models import Appointment, CapacitySlot, Feedback, ServiceCenter, ServiceJob
+from app.db.models import Appointment, CapacitySlot, Feedback, ServiceCenter, ServiceJob, Vehicle
 from app.db.session import SessionLocal
 
 HOLD_MINUTES = 10
+# An appointment in either state occupies a bay and counts as the vehicle's
+# upcoming visit. Once its slot time has passed it is history, booked or not.
+ACTIVE_STATUSES = ("held", "booked")
 
 # Postgres stores TIMESTAMPTZ normalized to UTC and hands it back tz-aware in
 # UTC. Everything user-facing (slot times shown to owners, `pref_time_window`
@@ -68,9 +71,55 @@ def get_open_slots(center_id: str | None = None, city: str | None = None,
         ]
 
 
+def _upcoming(session, vin: str) -> list[Appointment]:
+    return list(session.execute(
+        select(Appointment).where(
+            Appointment.vin == vin, Appointment.status.in_(ACTIVE_STATUSES),
+            Appointment.slot_start > dt.datetime.now(dt.timezone.utc),
+        )
+    ).scalars())
+
+
+def _release_bay(session, center_id: str, slot_start: dt.datetime, status: str) -> None:
+    """Reopen one bay at this time that is in `status` — never one already open,
+    or the bay the appointment actually held would stay taken."""
+    bay = session.execute(
+        select(CapacitySlot).where(
+            CapacitySlot.center_id == center_id, CapacitySlot.slot_start == slot_start,
+            CapacitySlot.status == status,
+        ).limit(1)
+    ).scalar_one_or_none()
+    if bay:
+        bay.status = "open"
+
+
+def _describe(session, appt: Appointment) -> dict:
+    centre = session.get(ServiceCenter, appt.center_id)
+    return {"appointment_id": appt.id, "center_id": appt.center_id,
+            "center_name": centre.name if centre else appt.center_id,
+            "slot_start": _to_ist(appt.slot_start).isoformat(), "status": appt.status}
+
+
 def hold_slot(center_id: str, slot_start: str, vin: str) -> dict:
+    """Hold a bay for `vin`, keeping the vehicle to one upcoming appointment.
+
+    A vehicle that is already booked is refused, and told which booking it has.
+    An unconfirmed hold for the same vehicle is replaced and its bay reopened:
+    that is an owner changing their mind before confirming, not a second visit.
+    """
     start = dt.datetime.fromisoformat(slot_start)
     with SessionLocal() as session:
+        # Serialises bookings for one vehicle. Without it, two "yes"es arriving
+        # together both pass the check below and the car is booked twice.
+        if session.get(Vehicle, vin, with_for_update=True) is None:
+            return {"held": False, "error": f"unknown vin {vin}"}
+
+        upcoming = _upcoming(session, vin)
+        booked = next((a for a in upcoming if a.status == "booked"), None)
+        if booked is not None:
+            return {"held": False, "error": "this vehicle already has an upcoming booking",
+                    "existing": _describe(session, booked)}
+
         slot = session.execute(
             select(CapacitySlot)
             .where(CapacitySlot.center_id == center_id, CapacitySlot.slot_start == start,
@@ -79,6 +128,10 @@ def hold_slot(center_id: str, slot_start: str, vin: str) -> dict:
         ).scalar_one_or_none()
         if slot is None:
             return {"held": False, "error": "no open slot at that time"}
+
+        for stale in upcoming:
+            stale.status = "cancelled"
+            _release_bay(session, stale.center_id, stale.slot_start, "held")
 
         slot.status = "held"
         appt = Appointment(
@@ -180,13 +233,8 @@ def cancel_appointment(appointment_id: str, reason: str = "") -> dict:
         appt = session.get(Appointment, appointment_id)
         if not appt:
             return {"cancelled": False, "error": "unknown appointment_id"}
+        if appt.status in ACTIVE_STATUSES:
+            _release_bay(session, appt.center_id, appt.slot_start, appt.status)
         appt.status = "cancelled"
-        slot = session.execute(
-            select(CapacitySlot).where(
-                CapacitySlot.center_id == appt.center_id, CapacitySlot.slot_start == appt.slot_start,
-            ).limit(1)
-        ).scalar_one_or_none()
-        if slot:
-            slot.status = "open"
         session.commit()
         return {"cancelled": True, "appointment_id": appointment_id, "reason": reason}

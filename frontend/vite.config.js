@@ -19,4 +19,9 @@ export default defineConfig({
       "/ws": { target: "ws://localhost:8010", ws: true },
     },
   },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.js"],
+    include: ["src/**/*.test.{js,jsx}"],
+  },
 });

@@ -396,15 +396,24 @@ async def chat_reply(req: ChatReplyRequest, principal: Principal = Depends(requi
                 "center_id": best["center_id"], "slot_start": best["slot_start"], "vin": req.vin,
             }, sched_ctx)
             booking = None
+            existing = (held.data or {}).get("existing")
             if (held.data or {}).get("held"):
                 confirmed = await invoke(SCHEDULING_ID, "scheduler.confirm", {
                     "center_id": best["center_id"], "slot_start": best["slot_start"],
                     "vin": req.vin, "customer_id": customer.get("customer_id"),
                 }, sched_ctx)
                 booking = confirmed.data
+            elif existing:
+                booking = {"booked": True, "already_booked": True, **existing}
 
             turns = []
-            if booking and booking.get("booked"):
+            if existing:
+                words = _slot_phrasing([existing])
+                turns.append({"role": "agent", "strategy": None, "agent": SCHEDULING_ID,
+                              "text": f"You're already booked at {words['center_name']} on "
+                                      f"{words['slot_day']} at {words['slot_time']} — "
+                                      "I've kept that booking rather than make a second one."})
+            elif booking and booking.get("booked"):
                 slot_words = _slot_phrasing([best])
                 r = await invoke(ENGAGEMENT_ID, "llm.persuade", {
                     "strategy": "CLOSE_CONFIRM", "diagnosis": diagnosis, **slot_words,
