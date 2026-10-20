@@ -16,7 +16,7 @@ import re
 import time
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -38,7 +38,13 @@ from app.auth.ratelimit import (
     record_mfa_failure,
     record_password_change_failure,
 )
-from app.auth.sessions import TokenResponse, mint_session, usable_memberships
+from app.auth.sessions import (
+    SessionTransport,
+    TokenResponse,
+    mint_session,
+    session_transport,
+    usable_memberships,
+)
 from app.config import settings
 from app.db.session import engine
 
@@ -147,7 +153,7 @@ async def mfa_enroll(req: EnrollRequest | None = None,
 
 
 @router.post("/mfa/confirm")
-async def mfa_confirm(req: CodeRequest, request: Request, response: Response,
+async def mfa_confirm(req: CodeRequest, request: Request, transport: SessionTransport = Depends(session_transport),
                       principal: Principal = Depends(enrolling_principal)) -> dict:
     ip = _ip(request)
     if (refusal := _throttled(principal.user_id, ip)) is not None:
@@ -179,7 +185,7 @@ async def mfa_confirm(req: CodeRequest, request: Request, response: Response,
             user,
             SimpleNamespace(org_id=principal.org_id, role=principal.role,
                             name=principal.org_name, kind=principal.org_kind),
-            amr=[*principal.amr, "totp"], response=response,
+            amr=[*principal.amr, "totp"], transport=transport,
             audit_detail={"reason": "mfa_enrolled"},
         ).model_dump()
     return {"recovery_codes": recovery_codes, "session": session}
@@ -194,7 +200,8 @@ class MfaVerifyRequest(BaseModel):
 
 
 @router.post("/mfa/verify", response_model=TokenResponse)
-async def mfa_verify(req: MfaVerifyRequest, request: Request, response: Response) -> TokenResponse:
+async def mfa_verify(req: MfaVerifyRequest, request: Request,
+                     transport: SessionTransport = Depends(session_transport)) -> TokenResponse:
     try:
         challenge = decode_mfa_challenge(req.mfa_token)
     except Exception:  # noqa: BLE001 — every failure to decode is the same 401
@@ -241,7 +248,7 @@ async def mfa_verify(req: MfaVerifyRequest, request: Request, response: Response
     clear_mfa(user.id)
     _audit("auth.mfa_verified", outcome="allowed", user_id=user.id, subject=user.email,
            factor=factor)
-    return mint_session(user, membership, amr=[*challenge["amr"], factor], response=response)
+    return mint_session(user, membership, amr=[*challenge["amr"], factor], transport=transport)
 
 
 # ── managing it ────────────────────────────────────────────────────────────

@@ -22,8 +22,9 @@ never readable without already knowing the password.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -43,6 +44,9 @@ class TokenResponse(BaseModel):
     # Set when the session is not yet complete: "mfa_enroll" means it can enrol in a
     # second factor and nothing else.
     next_step: str | None = None
+    # Only for the native app (X-Client: mobile). A browser gets its refresh token
+    # as an httpOnly cookie and this stays empty — see SessionTransport.
+    refresh_token: str | None = None
 
 
 class MfaChallenge(BaseModel):
@@ -51,6 +55,26 @@ class MfaChallenge(BaseModel):
     mfa_required: bool = True
     mfa_token: str
     expires_in: int
+
+
+@dataclass
+class SessionTransport:
+    """How a new session's refresh token reaches the client.
+
+    `web`: an httpOnly cookie, which script on the page can never read.
+    `mobile`: the response body, for the app to keep in the OS keystore.
+    Chosen by the X-Client header at sign-in; the token family stays bound to it.
+    """
+
+    response: Response
+    client: str = "web"
+
+
+def session_transport(request: Request, response: Response) -> SessionTransport:
+    client = request.headers.get("X-Client", "web").strip().lower()
+    if client not in refresh.CLIENTS:
+        raise HTTPException(400, "unknown X-Client; expected 'web' or 'mobile'")
+    return SessionTransport(response=response, client=client)
 
 
 def respond(response: Response, result: "TokenResponse | MfaChallenge"):
@@ -83,23 +107,28 @@ def usable_memberships(rows, method: str, *, second_factor_done: bool = True) ->
     return usable
 
 
-def mint_session(user, membership, *, amr: Sequence[str], response: Response,
+def mint_session(user, membership, *, amr: Sequence[str], transport: SessionTransport,
                  audit_detail: dict | None = None, scope: str = "full",
                  next_step: str | None = None) -> TokenResponse:
     """Token + audit line + response for a user acting in `membership`.
 
     `user` needs .id, .email, .full_name, .token_version; `membership` needs
-    .org_id, .role, .name (org name), .kind. `response` has no default on purpose
-    — a FULL session always gets a fresh refresh cookie on it; forgetting to pass
-    one would silently leave a browser with an access token and nothing to renew
-    it when it expires in 15 minutes.
+    .org_id, .role, .name (org name), .kind. `transport` has no default on purpose
+    — a FULL session always gets a fresh refresh token through it; forgetting to
+    pass one would leave the client with an access token and nothing to renew it
+    when it expires in 15 minutes.
     """
     token, expires_in = issue_token(user.id, membership.org_id, membership.role,
                                     user.token_version, amr=amr, scope=scope)
+    body_refresh = None
     if scope == "full":
         with engine.begin() as conn:
-            raw_refresh = refresh.issue(conn, user.id, membership.org_id, membership.role, amr)
-        refresh.set_cookie(response, raw_refresh)
+            raw_refresh = refresh.issue(conn, user.id, membership.org_id, membership.role, amr,
+                                        client=transport.client)
+        if transport.client == "web":
+            refresh.set_cookie(transport.response, raw_refresh)
+        else:
+            body_refresh = raw_refresh
     detail = {"method": next((a for a in amr if a in ("password", "google", "phone_otp")), amr[0]),
               **({"scope": scope} if scope != "full" else {}), **(audit_detail or {})}
     record(AccessEvent(action="auth.login", principal_id=user.id,
@@ -111,10 +140,11 @@ def mint_session(user, membership, *, amr: Sequence[str], response: Response,
         role=membership.role, amr=tuple(amr), session_scope=scope,
     )
     return TokenResponse(access_token=token, expires_in=expires_in,
-                         principal=principal.describe(), next_step=next_step)
+                         principal=principal.describe(), next_step=next_step,
+                         refresh_token=body_refresh)
 
 
-def issue_session(user, *, methods: Sequence[str], response: Response,
+def issue_session(user, *, methods: Sequence[str], transport: SessionTransport,
                   org_id: str | None = None,
                   role: str | None = None) -> "TokenResponse | MfaChallenge":
     """Turn an authenticated user into a session, or raise HTTPException.
@@ -163,11 +193,11 @@ def issue_session(user, *, methods: Sequence[str], response: Response,
             ],
         })
 
-    return _apply_second_factor(user, chosen, methods, response)
+    return _apply_second_factor(user, chosen, methods, transport)
 
 
 def _apply_second_factor(user, membership, methods: Sequence[str],
-                         response: Response) -> "TokenResponse | MfaChallenge":
+                         transport: SessionTransport) -> "TokenResponse | MfaChallenge":
     """The last gate before a session exists.
 
     - Enrolled in a second factor (voluntarily or not): owe the code — return a challenge.
@@ -177,7 +207,7 @@ def _apply_second_factor(user, membership, methods: Sequence[str],
     - Otherwise: a full session.
     """
     if any(m in ("totp", "recovery") for m in methods):      # already passed one
-        return mint_session(user, membership, amr=methods, response=response)
+        return mint_session(user, membership, amr=methods, transport=transport)
 
     with engine.connect() as conn:
         enrolled = mfa.is_enrolled(conn, user.id)
@@ -188,5 +218,5 @@ def _apply_second_factor(user, membership, methods: Sequence[str],
 
     if settings.mfa_enforcement and get_policy().roles[membership.role].mfa_required:
         return mint_session(user, membership, amr=methods, scope="mfa_enroll",
-                            next_step="mfa_enroll", response=response)
-    return mint_session(user, membership, amr=methods, response=response)
+                            next_step="mfa_enroll", transport=transport)
+    return mint_session(user, membership, amr=methods, transport=transport)

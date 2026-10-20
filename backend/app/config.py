@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_from: str = ""            # sender number, or a Messaging Service SID
+    # How the mobile app's notifications are delivered. "console" logs them so
+    # development needs no account; it is refused in production, because the
+    # log line carries appointment details. "expo" uses Expo's push service.
+    push_provider: Literal["console", "expo", "none"] = "console"
+    # Only needed when the Expo project has "enhanced push security" turned on.
+    expo_access_token: str = ""
     # One-time codes. Short-lived and few-attempt on purpose: six digits is a
     # million possibilities, so the limit on guesses is what protects the code.
     otp_ttl_s: int = 300

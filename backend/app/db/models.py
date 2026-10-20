@@ -214,6 +214,10 @@ class RefreshToken(Base):
     org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"))
     role: Mapped[str] = mapped_column(String(48))
     amr: Mapped[str] = mapped_column(String(64))
+    # "web" (httpOnly cookie only) or "mobile" (response body only). Bound at
+    # issue and checked on every rotation, so a cookie's successor can never be
+    # handed back in a body that page script could read.
+    client: Mapped[str] = mapped_column(String(8), default="web", server_default="web")
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     issued_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
@@ -222,6 +226,29 @@ class RefreshToken(Base):
     used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
+
+
+class PushDevice(Base):
+    """Where the mobile app can be reached. See app/push.py.
+
+    One row per push token: a phone signed in by someone new moves to them, so
+    a handed-down phone stops getting the previous owner's alerts. Rows are
+    deleted whenever the user's sessions are ended (refresh.revoke_all_for_user)
+    — signing out must also stop the notifications.
+    """
+
+    __tablename__ = "push_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    token: Mapped[str] = mapped_column(String(200), unique=True)
+    platform: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+    last_seen_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
 
 class RetiredMembership(Base):
     """A membership moved or removed when a role was retired from the policy.

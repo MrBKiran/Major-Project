@@ -422,7 +422,11 @@ class PushArgs(BaseModel):
       description="Send a mobile app push notification (secondary channel).",
       sensitivity="pii", side_effect="external", rate_limit="5/min")
 async def push(args: PushArgs, ctx: ToolContext) -> dict:
-    return {"sent": True, "_stub": True}
+    from app import push as delivery
+
+    data = {"deeplink": args.deeplink} if args.deeplink else {}
+    return await asyncio.to_thread(delivery.notify_customer, args.customer_id,
+                                   args.title, args.body, data)
 
 
 class PlantNotifyArgs(BaseModel):

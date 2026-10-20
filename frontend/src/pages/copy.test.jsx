@@ -21,14 +21,18 @@ const { PolicyCounts } = await import("./SecurityConsole.jsx");
 const { AppointmentRow } = await import("./ServiceOps.jsx");
 const { default: Login } = await import("./Login.jsx");
 
-const oilPump = (days) => ({
-  prediction: { component: "oil_pump", severity: "P1", days_to_failure: days }, steps: [],
+const oilPump = (state, days) => ({
+  vin: "KA03KL1008", model: "Nexon", odometer: 30000, city: "Bengaluru",
+  drive: { state, basis: "telemetry", speed_kmph: state === "DRIVING" ? 68 : 0 },
+  allowed: { touch: false, slots: false, max_elements: state === "PARKED" ? null : 1 },
+  alert: { component: "oil_pump", severity: "P1", days_to_failure: days },
+  economics: null, booking: null, slots: [],
 });
 
 function renderConsole(driveState, days) {
   return render(
-    <ConsoleBody night={false} driveState={driveState} result={oilPump(days)} vin="KA03KL1008"
-                 slotsAllowed={false} touchAllowed={false} booked={false} onBook={() => {}} />,
+    <ConsoleBody night={false} screen={oilPump(driveState, days)} slot={null}
+                 onBook={() => {}} onOtherTime={() => {}} />,
   );
 }
 

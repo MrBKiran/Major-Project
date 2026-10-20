@@ -33,8 +33,11 @@ from app.auth.deps import requires
 from app.auth.keys import validate_auth_config
 from app.auth.mfa import validate_mfa_config
 from app.auth.sms import validate_sms_config
+from app.push import validate_push_config
 from app.api_fleet import router as fleet_router
 from app.api_chat import router as chat_router
+from app.api_car import router as car_router
+from app.api_devices import router as devices_router
 from app.config import settings
 from app.events import bus
 from app.tools import core  # noqa: F401 — importing registers every tool
@@ -49,7 +52,8 @@ async def lifespan(app: FastAPI):
     configure_logging()
     # First, before anything with side effects starts: in production an unusable
     # signing key raises here and the app never comes up.
-    for warning in [*validate_auth_config(), *validate_sms_config(), *validate_mfa_config()]:
+    for warning in [*validate_auth_config(), *validate_sms_config(), *validate_mfa_config(),
+                    *validate_push_config()]:
         logging.getLogger("autosaarthi").warning(warning)
     guard.install()                       # bind UEBA into the tool registry
     engine.reload()
@@ -95,6 +99,8 @@ app.include_router(signin_router)     # Google, phone code
 app.include_router(mfa_router)        # second factor
 app.include_router(fleet_router)      # Slides 1-4 read APIs
 app.include_router(chat_router)       # live customer chat — turn-by-turn Customer Engagement Agent
+app.include_router(car_router)        # car screen: server-decided drive state, booking from the car
+app.include_router(devices_router)    # where the mobile app can be reached for push
 
 
 @app.exception_handler(Exception)

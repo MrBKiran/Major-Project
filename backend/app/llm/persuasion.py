@@ -67,6 +67,12 @@ def _component_economics() -> dict[str, dict]:
     return out
 
 
+def component_economics(component: str) -> dict | None:
+    """Repair vs. breakdown cost for a component, from vehicles.yaml — what the
+    agent quotes, so every screen shows the same pair. None if unknown."""
+    return _component_economics().get(component)
+
+
 @lru_cache(maxsize=32)
 def _daily_earning(vin: str) -> int:
     """Owner's stated daily income, for the LOSS_FRAME strategy. Only the

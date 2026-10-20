@@ -37,10 +37,12 @@ from app.auth.ratelimit import (
 from app.auth.scope import can_access_vin
 from app.auth.sessions import (
     MfaChallenge,
+    SessionTransport,
     TokenResponse,
     issue_session,
     mint_session,
     respond,
+    session_transport,
     usable_memberships,
 )
 from app.config import settings
@@ -90,7 +92,7 @@ async def auth_config() -> dict:
 
 @router.post("/login", response_model=TokenResponse | MfaChallenge)
 async def login(req: LoginRequest, request: Request,
-                response: Response) -> TokenResponse | MfaChallenge:
+                transport: SessionTransport = Depends(session_transport)) -> TokenResponse | MfaChallenge:
     ip = request.client.host if request.client else "unknown"
     allowed, retry_after = check_login(ip, req.email)
     if not allowed:
@@ -134,28 +136,41 @@ async def login(req: LoginRequest, request: Request,
     # Everything after "the password is right" is shared with every other way of
     # signing in — see auth/sessions.py.
     result = issue_session(user, methods=("password",), org_id=req.org_id, role=req.role,
-                           response=response)
+                           transport=transport)
     clear_login(ip, req.email)
-    return respond(response, result)      # 202 + a challenge while a second factor is owed
+    return respond(transport.response, result)      # 202 + a challenge while a second factor is owed
 
 
-def _refresh_refused(detail: str) -> JSONResponse:
+def _refresh_refused(detail: str, client: str) -> JSONResponse:
     # Returned, not raised: a raised HTTPException gets a fresh response, and the
-    # cookie deletion set on the injected one was silently dropped.
+    # cookie deletion set on the injected one was silently dropped. The app's
+    # refusals leave cookies alone — it has none, and a browser's is not its own.
     refused = JSONResponse({"detail": detail}, status_code=401)
-    refresh.clear_cookie(refused)
+    if client == "web":
+        refresh.clear_cookie(refused)
     return refused
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=200)
+
+
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_access_token(request: Request, response: Response) -> TokenResponse:
-    """Trade the httpOnly refresh cookie for a new, short-lived access token.
+async def refresh_access_token(request: Request, response: Response,
+                               body: RefreshRequest | None = None) -> TokenResponse:
+    """Trade a refresh token for a new, short-lived access token.
+
+    A browser sends the httpOnly cookie and gets the next one as a cookie; the
+    app sends its token in the body and gets the next one in the body. Which one
+    is decided by where the token is, never by a header — script on the web page
+    can set any header, and must never be handed a token it can read.
 
     Re-validates the membership and the user's active flag fresh from the
     database rather than trusting anything cached — that is the whole point of
     making the access token short-lived in the first place.
     """
-    raw = request.cookies.get(refresh.COOKIE_NAME)
+    client = "mobile" if body is not None else "web"
+    raw = body.refresh_token if body is not None else request.cookies.get(refresh.COOKIE_NAME)
     if not raw:
         raise HTTPException(401, "no refresh token")
 
@@ -164,7 +179,7 @@ async def refresh_access_token(request: Request, response: Response) -> TokenRes
     # same connection, and those must commit even though the refresh itself failed.
     with engine.begin() as conn:
         try:
-            rotated, failure = refresh.rotate(conn, raw), None
+            rotated, failure = refresh.rotate(conn, raw, client=client), None
         except refresh.RefreshFailure as exc:
             rotated, failure = None, exc.reason
 
@@ -173,7 +188,7 @@ async def refresh_access_token(request: Request, response: Response) -> TokenRes
         # and deleting it here would sign out the tab that won.
         raise HTTPException(409, "this session was refreshed a moment ago; retry")
     if rotated is None:
-        return _refresh_refused("invalid or expired refresh token")
+        return _refresh_refused("invalid or expired refresh token", client)
 
     with engine.begin() as conn:
         user = conn.execute(
@@ -187,11 +202,12 @@ async def refresh_access_token(request: Request, response: Response) -> TokenRes
     valid = (user is not None and user.is_active and membership is not None
              and get_policy().role_valid_for(rotated.role, membership.kind))
     if not valid:
-        return _refresh_refused("session no longer valid")
+        return _refresh_refused("session no longer valid", client)
 
     token, expires_in = issue_token(user.id, rotated.org_id, rotated.role,
                                     user.token_version, amr=rotated.amr)
-    refresh.set_cookie(response, rotated.raw_token)
+    if client == "web":
+        refresh.set_cookie(response, rotated.raw_token)
     principal = Principal(
         user_id=user.id, email=user.email, full_name=user.full_name,
         org_id=rotated.org_id, org_name=membership.name, org_kind=membership.kind,
@@ -200,7 +216,8 @@ async def refresh_access_token(request: Request, response: Response) -> TokenRes
     record(AccessEvent(action="auth.token_refreshed", principal_id=user.id,
                        org_id=rotated.org_id, role=rotated.role, subject=user.email,
                        outcome="allowed"))
-    return TokenResponse(access_token=token, expires_in=expires_in, principal=principal.describe())
+    return TokenResponse(access_token=token, expires_in=expires_in, principal=principal.describe(),
+                         refresh_token=rotated.raw_token if client == "mobile" else None)
 
 
 class PasswordChangeRequest(BaseModel):
@@ -209,7 +226,7 @@ class PasswordChangeRequest(BaseModel):
 
 
 @router.post("/password/change", response_model=TokenResponse)
-async def change_password(req: PasswordChangeRequest, response: Response,
+async def change_password(req: PasswordChangeRequest, transport: SessionTransport = Depends(session_transport),
                           principal: Principal = Depends(current_principal)) -> TokenResponse:
     """Change your own password.
 
@@ -276,7 +293,7 @@ async def change_password(req: PasswordChangeRequest, response: Response,
                         token_version=changed.token_version),
         SimpleNamespace(org_id=principal.org_id, role=principal.role,
                         name=principal.org_name, kind=principal.org_kind),
-        amr=principal.amr, response=response, audit_detail={"reason": "password_changed"})
+        amr=principal.amr, transport=transport, audit_detail={"reason": "password_changed"})
 
 
 @router.post("/logout")
@@ -395,7 +412,7 @@ class SwitchRequest(BaseModel):
 
 
 @router.post("/switch", response_model=TokenResponse)
-async def switch_membership(req: SwitchRequest, response: Response,
+async def switch_membership(req: SwitchRequest, transport: SessionTransport = Depends(session_transport),
                               principal: Principal = Depends(current_principal)) -> TokenResponse:
     """Change which of the caller's own memberships is active, without asking
     for the password again.
@@ -429,7 +446,7 @@ async def switch_membership(req: SwitchRequest, response: Response,
     # be born revoked too.
     user = SimpleNamespace(id=principal.user_id, email=principal.email,
                            full_name=principal.full_name, token_version=principal.token_version)
-    return mint_session(user, row, amr=principal.amr, response=response,
+    return mint_session(user, row, amr=principal.amr, transport=transport,
                         audit_detail={"switched_from": principal.org_id})
 
 

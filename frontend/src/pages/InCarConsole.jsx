@@ -1,37 +1,45 @@
 /**
  * In-Car Console — the head unit itself, not a control panel for one.
  *
- * The previous version was a form that reported what the guard decided. This
- * one renders what the driver would actually see, and lets the guard's verdict
- * decide it: `console.show_slots` and `console.request_touch` are the tools
- * UEBA rule G6 blocks in motion, so when they come back BLOCK the screen has
- * no slot list and no tap target — because the agent was refused, not because
- * this file has an `if (driving)` in it. G7's one-element cap is why DRIVING
- * collapses to a single banner line.
+ * Everything on it comes from the server's car screen (GET /api/car/{vin}/screen,
+ * backend app/car.py): the drive state, read from the car's own telemetry; what
+ * that state allows, read from the same G6/G7 rules the guard enforces; the
+ * alert, its costs, and the slots — which the server does not even send while
+ * the car moves. This page has no `if (driving)` of its own: when touch is not
+ * allowed there is simply nothing to tap, and missing or stale telemetry comes
+ * back as "moving" because that is the direction in which a wrong guess costs a
+ * delay rather than a crash.
  *
- * That is the whole point of building it this way: the safety rule is visible
- * as an interface, and you can watch it change the screen by changing the
- * drive state. A client-side mirror of the rule would look identical and prove
- * nothing.
+ * Booking goes through POST /api/car/{vin}/book, where the drive state is
+ * checked again and scheduler.confirm passes the guard. The demo's drive-state
+ * control changes what the car *reports* (POST /simulate — red-team permission,
+ * demo mode only, and shown only when the server offers it), never what the
+ * page claims. The old version sent its own
+ * drive state with every request; the guard blocking a tap at speed is still
+ * demonstrated, by red-team ATTACK-5.
  *
  * Night mode follows the deck's screen 9. It is not a theme toggle for taste —
  * a head unit that throws a white panel at a driver at 21:34 is the same class
  * of hazard G6 exists to prevent.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { drivingLeft, formatDays, formatINR as inr, serviceDue } from "@autosaarthi/core";
+import { drivingLeft, formatDays, formatINR as inr, formatSlot, serviceDue } from "@autosaarthi/core";
 import { Empty, Skeleton } from "../ui.jsx";
 import {
   CarDock, CarFrame, CarStatusBar, CostRows, GhostButton, Headline, MapPane,
   Meta, MONO, Pill, PrimaryButton, SANS, tokens,
 } from "../device.jsx";
 
+/** How often the head unit asks again. A reading older than two minutes
+ *  counts as no reading at all, so the screen has to notice it ageing. */
+export const POLL_MS = 10_000;
+
 const DRIVE_STATES = [
-  { id: "PARKED", label: "Parked", speed: 0, sub: "full card, booking allowed" },
-  { id: "STOPPED_BRIEF", label: "Stopped briefly", speed: 0, sub: "G6 — deferred to park" },
-  { id: "DRIVING", label: "Driving", speed: 68, sub: "G6 + G7 — one line, voice only" },
+  { id: "PARKED", label: "Parked", sub: "the car reports parked" },
+  { id: "STOPPED_BRIEF", label: "Stopped briefly", sub: "the car reports a brief stop" },
+  { id: "DRIVING", label: "Driving", sub: "the car reports 68 km/h" },
 ];
 
 // Plural matters: the headline reads "Your brake pads ARE wearing out" but
@@ -55,24 +63,32 @@ function sentenceCase(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
-/** Economics mirror simulator/vehicles.yaml. Shown only as the pair the deck
- *  frames the decision with; the authoritative numbers live server-side and
- *  reach the owner's phone through the agent. */
-const ECONOMICS = {
-  water_pump: [2400, 18500], brake_pads: [3100, 22000], battery: [4200, 14000],
-  fuel_injector: [5600, 21000], oil_pump: [3800, 26000],
+/** Why the server treats the car as it does, in the driver's terms. */
+const BASIS = {
+  none: "no reading from the car — treated as moving",
+  stale: "no fresh reading from the car — treated as moving",
+  contradiction: "the car reports parked while moving — treated as moving",
 };
+
+function basisText(drive) {
+  if (BASIS[drive.basis]) return BASIS[drive.basis];
+  return `from the car's telemetry${drive.speed_kmph != null ? `, ${Math.round(drive.speed_kmph)} km/h` : ""}`;
+}
 
 
 export default function InCarConsole() {
   const [fleet, setFleet] = useState(null);
   const [vin, setVin] = useState(null);
-  const [driveState, setDriveState] = useState("PARKED");
   const [night, setNight] = useState(false);
-  const [result, setResult] = useState(null);
-  const [running, setRunning] = useState(false);
+  const [carScreen, setCarScreen] = useState(null);
+  const [screenError, setScreenError] = useState(null);
   const [error, setError] = useState(null);
-  const [booked, setBooked] = useState(false);
+  const [choice, setChoice] = useState(0);
+  const [pending, setPending] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const [controlError, setControlError] = useState(null);
+  // A slow answer about the previous car must not land on this one's screen.
+  const current = useRef(null);
 
   useEffect(() => {
     api.get("/api/fleet", { limit: 100 })
@@ -86,46 +102,69 @@ export default function InCarConsole() {
       .catch((e) => setError(e.message || String(e)));
   }, []);
 
-  const run = useCallback(async (v, ds) => {
-    if (!v) return;
-    setRunning(true);
-    setBooked(false);
+  const load = useCallback(async (v) => {
     try {
-      const speed = DRIVE_STATES.find((s) => s.id === ds).speed;
-      setResult(await api.post("/api/console/demo", { vin: v, drive_state: ds, speed_kmph: speed }));
+      const s = await api.get(`/api/car/${v}/screen`);
+      if (current.current !== v) return;
+      setCarScreen(s);
+      setScreenError(null);
     } catch (e) {
-      setResult({ error: e.message || String(e) });
-    } finally {
-      setRunning(false);
+      if (current.current === v) setScreenError(e.message || String(e));
     }
   }, []);
 
-  useEffect(() => { run(vin, driveState); }, [vin, driveState, run]);
+  useEffect(() => {
+    if (!vin) return undefined;
+    current.current = vin;
+    setCarScreen(null);
+    setChoice(0);
+    setRefusal(null);
+    setControlError(null);
+    load(vin);
+    const timer = setInterval(() => load(vin), POLL_MS);
+    return () => clearInterval(timer);
+  }, [vin, load]);
+
+  const book = async (slot) => {
+    setPending(true);
+    setRefusal(null);
+    try {
+      await api.post(`/api/car/${vin}/book`, { center_id: slot.center_id, slot_start: slot.slot_start });
+      await load(vin);
+    } catch (e) {
+      setRefusal(e.message || String(e));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const report = async (state) => {
+    setControlError(null);
+    try {
+      await api.post(`/api/car/${vin}/simulate`, { drive_state: state });
+      await load(vin);
+    } catch (e) {
+      setControlError(e.status === 404 ? "the drive-state control is off outside demo mode"
+                                       : e.message || String(e));
+    }
+  };
 
   if (error) return <Empty icon="search">Could not load fleet — {error}</Empty>;
   if (!fleet) return <Skeleton className="h-[520px] w-full" />;
   if (!fleet.length) return <Empty icon="inbox">No vehicle in scope to demo the console with.</Empty>;
 
-  const vehicle = fleet.find((v) => v.vin === vin);
   const t = tokens(night);
-  const decisionOf = (tool) => result?.steps?.find((s) => s.tool === tool)?.decision;
-  // Absent means never attempted (the alert itself was refused), which for
-  // these two is the same outcome for the driver as an explicit block.
-  const slotsAllowed = decisionOf("console.show_slots") === "ALLOW";
-  const touchAllowed = decisionOf("console.request_touch") === "ALLOW";
-  const blocked = (result?.steps || []).filter((s) => s.decision === "BLOCK");
-  // Say why it is actually blocked. Assuming "in motion" is wrong whenever the
-  // agent was stopped for some other reason — a quarantine from an earlier
-  // block, say — and a safety UI that misreports its own reason is worse than
-  // one that says nothing.
-  const blockReason = blocked[0]?.reasons?.[0]?.detail || null;
+  const state = carScreen?.drive.state;
+  const slots = carScreen?.slots || [];
+  const slot = slots.length ? slots[choice % slots.length] : null;
 
   return (
     <div className="space-y-4">
-      {/* Simulator rail — deliberately outside the device frame. The console
-          never asserts its own drive state; the server does. */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-card/60 px-3 py-2.5">
+      {/* Simulator rail — deliberately outside the device frame. */}
+      <div role="group" aria-label="Simulator"
+           className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface-card/60 px-3 py-2.5">
         <select
+          aria-label="Vehicle"
           value={vin || ""}
           onChange={(e) => setVin(e.target.value)}
           className="rounded-lg border border-border bg-surface-inset/60 px-2.5 py-1.5 text-label text-fg outline-none focus:border-accent"
@@ -137,32 +176,39 @@ export default function InCarConsole() {
           ))}
         </select>
 
-        <div className="flex gap-1.5">
-          {DRIVE_STATES.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setDriveState(s.id)}
-              title={s.sub}
-              className={`rounded-lg border px-2.5 py-1.5 text-label font-medium transition ${
-                driveState === s.id
-                  ? "border-accent/50 bg-accent/10 text-accent-ink"
-                  : "border-border bg-surface-inset/40 text-fg-tertiary hover:border-fg-subtle"
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
+        {/* Offered by the server only when /simulate would accept it. */}
+        {carScreen?.controls?.drive_state ? (
+          <div className="flex gap-1.5">
+            {DRIVE_STATES.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => report(s.id)}
+                title={s.sub}
+                aria-pressed={state === s.id}
+                className={`rounded-lg border px-2.5 py-1.5 text-label font-medium transition ${
+                  state === s.id
+                    ? "border-accent/50 bg-accent/10 text-accent-ink"
+                    : "border-border bg-surface-inset/40 text-fg-tertiary hover:border-fg-subtle"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-caption text-fg-muted">Drive state as reported by the car</span>
+        )}
 
         <button
           onClick={() => setNight((n) => !n)}
+          aria-pressed={night}
           className="rounded-lg border border-border bg-surface-inset/40 px-2.5 py-1.5 text-label text-fg-tertiary transition hover:border-fg-subtle"
         >
           {night ? "Night" : "Day"}
         </button>
 
-        <span className="ml-auto text-caption text-fg-muted">
-          {running ? "asking the guard…" : "rendered from the live UEBA verdict"}
+        <span className="ml-auto text-caption text-fg-muted" role="status">
+          {controlError || (carScreen ? "drawn from the server's car screen" : "asking the server…")}
         </span>
       </div>
 
@@ -174,99 +220,105 @@ export default function InCarConsole() {
             left={
               <>
                 <span style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
-                  {night ? "21:34" : driveState === "PARKED" ? "9:41" : "7:44"}
+                  {night ? "21:34" : state === "PARKED" ? "9:41" : "7:44"}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: 12, color: t.dim }}>
-                  {driveState === "PARKED" ? "P" : "D"}
+                  {state === "PARKED" ? "P" : "D"}
                 </span>
-                {driveState !== "PARKED" && (
+                {/* Only a live reading has a speed worth showing: a stale one's
+                    "0 km/h" beside a locked screen reads as a contradiction. */}
+                {state && state !== "PARKED" && carScreen.drive.basis === "telemetry"
+                  && carScreen.drive.speed_kmph != null && (
                   <span style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>
-                    {DRIVE_STATES.find((s) => s.id === driveState).speed}
+                    {Math.round(carScreen.drive.speed_kmph)}
                     <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 400, color: t.dim, marginLeft: 6 }}>km/h</span>
                   </span>
                 )}
               </>
             }
             center={
-              driveState === "STOPPED_BRIEF"
-                ? "stopped 6 s · brake held"
-                : `${vin}${vehicle?.odometer ? ` · ${vehicle.odometer.toLocaleString("en-IN")} km` : ""}`
+              state === "STOPPED_BRIEF"
+                ? "brief stop · brake held"
+                : `${vin}${carScreen?.odometer ? ` · ${carScreen.odometer.toLocaleString("en-IN")} km` : ""}`
             }
             right="LTE   fuel 46%"
           />
         }
-        dock={<CarDock night={night} right={driveState === "PARKED" ? "rear camera" : "nav audio active"} />}
+        dock={<CarDock night={night} right={state === "PARKED" ? "rear camera" : "nav audio active"} />}
       >
         <ConsoleBody
-          night={night} driveState={driveState} result={result} vin={vin}
-          slotsAllowed={slotsAllowed} touchAllowed={touchAllowed} blockReason={blockReason}
-          booked={booked} onBook={() => setBooked(true)}
+          night={night} screen={carScreen} error={screenError} slot={slot}
+          onBook={book} onOtherTime={() => setChoice((c) => c + 1)}
+          pending={pending} refusal={refusal}
         />
       </CarFrame>
 
-      {/* The receipt. Same verdicts the screen above was built from. */}
-      <div className="rounded-xl border border-border bg-surface-card/60 px-4 py-3">
-        <div className="mb-2 text-caption font-medium uppercase tracking-wider text-fg-muted">
-          What the guard decided
-        </div>
-        {!result?.steps?.length ? (
-          <p className="text-label text-fg-muted">
-            {result?.prediction === null
-              ? "No active prediction for this vehicle — the agent had nothing to raise."
-              : "…"}
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {result.steps.map((s, i) => (
-              <div key={i} className="flex flex-wrap items-baseline gap-2 text-label">
-                <span className={`rounded px-1.5 py-0.5 font-mono text-caption font-semibold ${
-                  s.decision === "ALLOW" ? "bg-ok/10 text-ok-ink" : "bg-p1/10 text-p1-ink"
-                }`}>
-                  {s.decision}
-                </span>
-                <span className="font-mono text-fg-secondary">{s.tool}</span>
-                {s.risk != null && <span className="text-fg-muted">risk {s.risk}</span>}
-                {s.reasons?.[0]?.detail && (
-                  <span className="text-fg-muted">— {s.reasons[0].detail}</span>
-                )}
-              </div>
-            ))}
-            {blocked.length > 0 && (
-              <p className="pt-1 text-label text-fg-muted">
-                The screen above has no slot list and no tap target because these calls were
-                refused — not because this page checks the speed itself.
-              </p>
-            )}
-          </div>
-        )}
+      {carScreen && <Verdict screen={carScreen} />}
+    </div>
+  );
+}
+
+/* ── the receipt ─────────────────────────────────────────────────────────── */
+
+/** What the server decided, and so what the screen above could show. */
+export function Verdict({ screen: s }) {
+  const { allowed } = s;
+  const slotList = !allowed.slots ? "not sent — G6"
+    : s.booking ? "not needed — already booked"
+    : s.slots.length ? `sent (${s.slots.length})` : "none to send";
+  const rows = [
+    ["Drive state", `${sentenceCase(s.drive.state.replace(/_/g, " ").toLowerCase())} — ${basisText(s.drive)}`],
+    ["Tap targets", allowed.touch ? "allowed" : "blocked — G6"],
+    ["Slot list", slotList],
+    ["Elements on screen", allowed.max_elements == null ? "no limit while parked"
+                                                        : `at most ${allowed.max_elements} — G7`],
+  ];
+  return (
+    <div className="rounded-xl border border-border bg-surface-card/60 px-4 py-3">
+      <div className="mb-2 text-caption font-medium uppercase tracking-wider text-fg-muted">
+        What the server decided
       </div>
+      <div className="space-y-1.5">
+        {rows.map(([name, value]) => (
+          <div key={name} className="flex flex-wrap items-baseline gap-2 text-label">
+            <span className="w-40 shrink-0 text-fg-muted">{name}</span>
+            <span className="text-fg-secondary">{value}</span>
+          </div>
+        ))}
+      </div>
+      <p className="pt-2 text-label text-fg-muted">
+        The screen above is built from these. The page never decides the drive state itself,
+        and a booking is checked again by the guard.
+      </p>
     </div>
   );
 }
 
 /* ── the three states ────────────────────────────────────────────────────── */
 
-export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touchAllowed, blockReason, booked, onBook }) {
+export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime, pending, refusal }) {
   const t = tokens(night);
-  const pred = result?.prediction;
 
-  if (result?.error) {
-    return <MapPane night={night} lines={["console unavailable", result.error]} />;
+  if (error && !s) {
+    return <MapPane night={night} lines={["console unavailable", error]} />;
   }
 
-  // No verdict yet. Not the healthy screen: that would tell the driver of a
+  // No answer yet. Not the healthy screen: that would tell the driver of a
   // car with a P1 fault that everything is fine for the length of a request.
-  if (!result) {
+  if (!s) {
     return <MapPane night={night} lines={["checking with the service agent…"]} />;
   }
 
+  const state = s.drive.state;
+  const alert = s.alert;
+
   // Healthy: the deck's quiet screen. No card, no dock intrusion, nothing to do.
-  if (!pred) {
+  if (!alert) {
     return (
       <>
         <MapPane
           night={night}
-          chip={driveState === "PARKED" ? "Parked" : "Route active"}
+          chip={state === "PARKED" ? "Parked" : "Route active"}
           lines={["map placeholder", "no active prediction — nothing raised"]}
         />
         <div style={{
@@ -284,11 +336,12 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
     );
   }
 
-  const days = pred.days_to_failure;
-  const [repair, breakdown] = ECONOMICS[pred.component] || [3000, 20000];
+  const days = alert.days_to_failure;
+  const booking = s.booking;
+  const touch = s.allowed.touch;
 
   // DRIVING — G7 caps the alert at one element, G6 blocks anything tappable.
-  if (driveState === "DRIVING") {
+  if (state === "DRIVING") {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <div style={{
@@ -296,16 +349,17 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
           background: t.alertBg,
           borderBottom: `2px solid ${t.pillInk}`, flexShrink: 0,
         }}>
-          <Pill night={night}>{pred.severity}</Pill>
+          <Pill night={night}>{alert.severity}</Pill>
           <span style={{ fontFamily: SANS, fontSize: 21, fontWeight: 500, color: t.ink, flex: 1 }}>
-            {sentenceCase(label(pred.component))} service needed
-            {days != null ? ` ${serviceDue(days)}` : ""}. I'll call you about it.
+            {booking
+              ? `${sentenceCase(label(alert.component))} service booked for ${formatSlot(booking.slot_start)}.`
+              : `${sentenceCase(label(alert.component))} service needed${days != null ? ` ${serviceDue(days)}` : ""}. I'll call you about it.`}
           </span>
           <Meta night={night}>voice · hands-free</Meta>
         </div>
 
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-          <MapPane night={night} chip="SH-25 · 11 km to Gondal"
+          <MapPane night={night} chip={`${s.city ? `${s.city} · ` : ""}route active`}
                    lines={["map placeholder", "route active, full width retained"]} />
           <div style={{
             width: 320, flexShrink: 0, background: t.panel, borderLeft: `1px solid ${t.edge}`,
@@ -315,8 +369,9 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
             <Waveform night={night} />
             <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 600, color: t.ink }}>Agent speaking</div>
             <p style={{ fontFamily: SANS, fontSize: 13, color: t.dim, lineHeight: 1.55, margin: 0 }}>
-              Booking is locked while the vehicle is in motion. Say “book it” and I'll
-              confirm when you stop.
+              {s.drive.basis === "telemetry"
+                ? "Booking is locked while the vehicle is in motion. Say “book it” and I'll confirm when you stop."
+                : "Booking is locked until the car reports that it is parked."}
             </p>
             <div style={{ width: "100%", marginTop: 4 }}>
               <PrimaryButton night={night} disabled>
@@ -326,7 +381,7 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
             <Meta night={night} style={{
               background: t.control, padding: "5px 10px", borderRadius: 6,
             }}>
-              disabled · in motion
+              {s.drive.basis === "telemetry" ? "disabled · in motion" : "disabled · no fresh reading"}
             </Meta>
           </div>
         </div>
@@ -334,39 +389,43 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
     );
   }
 
-  // STOPPED_BRIEF — G6 defers the detail; two large targets, nothing to read.
-  if (driveState === "STOPPED_BRIEF") {
+  // STOPPED_BRIEF — G6 defers the detail. Nothing to read at length, and
+  // nothing to tap unless the server says touch is allowed.
+  if (state === "STOPPED_BRIEF") {
     return (
       <>
-        <MapPane night={night} chip="Kalawad Road · 4.2 km to office"
-                 lines={["map placeholder", "route active, next turn in 600 m"]} />
+        <MapPane night={night} chip="Brief stop · route active"
+                 lines={["map placeholder", "route active"]} />
         <div style={{
           width: 380, flexShrink: 0, background: t.panel, borderLeft: `1px solid ${t.edge}`,
           padding: 26, display: "flex", flexDirection: "column",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Pill night={night}>{pred.severity}</Pill>
+            <Pill night={night}>{alert.severity}</Pill>
             <Meta night={night}>brief stop</Meta>
           </div>
           <div style={{ marginTop: 18 }}>
             <Headline
               night={night} size={27}
-              title={`${sentenceCase(label(pred.component))} ${isPlural(pred.component) ? "need" : "needs"} service${days != null ? ` ${serviceDue(days)}` : ""}`}
+              title={`${sentenceCase(label(alert.component))} ${isPlural(alert.component) ? "need" : "needs"} service${days != null ? ` ${serviceDue(days)}` : ""}`}
               body="Details when you park."
             />
-          </div>
-          <div style={{ flex: 1 }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <PrimaryButton night={night}>Remind me when parked</PrimaryButton>
-            <GhostButton night={night}>Call me about it</GhostButton>
           </div>
         </div>
       </>
     );
   }
 
-  // PARKED — the full case. Slots and the tap target appear only because the
-  // guard allowed the tools that produce them.
+  // PARKED — the full case. The costs, the slot and the tap target appear only
+  // because the server sent them and allowed them.
+  const rows = [
+    ...(s.economics ? [
+      { label: "Repair now", value: inr(s.economics.repair_inr), strong: true },
+      { label: "If it fails on road", value: inr(s.economics.breakdown_inr), tone: "bad", strong: true },
+    ] : []),
+    ...(slot && !booking ? [{ label: "Slot", value: `${formatSlot(slot.slot_start)} · ${slot.city}` }] : []),
+  ];
+
   return (
     <>
       <MapPane night={night} chip="Parked · engine off"
@@ -376,14 +435,14 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
         padding: 26, display: "flex", flexDirection: "column", overflowY: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Pill night={night}>{pred.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
+          <Pill night={night}>{alert.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
           <Meta night={night}>service agent</Meta>
         </div>
 
         <div style={{ marginTop: 18 }}>
           <Headline
             night={night} size={31}
-            title={`Your ${label(pred.component)} ${isPlural(pred.component) ? "are" : "is"} wearing out`}
+            title={`Your ${label(alert.component)} ${isPlural(alert.component) ? "are" : "is"} wearing out`}
             body={
               days != null
                 ? `${drivingLeft(days)}, on current use.`
@@ -392,43 +451,46 @@ export function ConsoleBody({ night, driveState, result, vin, slotsAllowed, touc
           />
         </div>
 
-        <div style={{ marginTop: 20 }}>
-          <CostRows
-            night={night}
-            rows={[
-              { label: "Repair now", value: inr(repair), strong: true },
-              { label: "If it fails on road", value: inr(breakdown), tone: "bad", strong: true },
-              ...(slotsAllowed ? [{ label: "Nearest slot", value: "Tue 09:30 · Rajkot" }] : []),
-            ]}
-          />
-        </div>
+        {rows.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <CostRows night={night} rows={rows} />
+          </div>
+        )}
 
         <div style={{ flex: 1, minHeight: 18 }} />
 
-        {booked ? (
+        {booking ? (
           <div style={{
             border: `1px solid ${t.edge}`, borderRadius: 14, padding: 18,
             background: t.okBg, textAlign: "center",
           }}>
-            <Meta night={night} style={{ color: t.positive }}>Confirmed</Meta>
+            <Meta night={night} style={{ color: t.positive }}>
+              {booking.status === "booked" ? "Confirmed" : "Held"}
+            </Meta>
             <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 600, color: t.ink, marginTop: 6 }}>
-              Tuesday 09:30 · Rajkot
+              {`${formatSlot(booking.slot_start)} · ${booking.center_name}`}
             </div>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <PrimaryButton
               night={night}
-              disabled={!touchAllowed}
-              onClick={onBook}
-              note={touchAllowed ? null : `blocked · ${blockReason || "refused by the guard"}`}
+              disabled={!touch || !slot || pending}
+              onClick={() => onBook(slot)}
+              note={touch ? null : `blocked · ${basisText(s.drive)}`}
             >
-              {slotsAllowed ? "Book Tuesday 09:30" : "Book service"}
+              {pending ? "Booking…" : slot ? `Book ${formatSlot(slot.slot_start)}` : "Book service"}
             </PrimaryButton>
-            <div style={{ display: "flex", gap: 10 }}>
-              <GhostButton night={night} grow disabled={!slotsAllowed}>Other times</GhostButton>
-              <GhostButton night={night} grow>Explain why</GhostButton>
-            </div>
+            {refusal && (
+              <p role="alert" style={{
+                fontFamily: SANS, fontSize: 14, color: t.pillInk, textAlign: "center", margin: 0,
+              }}>
+                {refusal}
+              </p>
+            )}
+            <GhostButton night={night} disabled={!touch || s.slots.length < 2} onClick={onOtherTime}>
+              Other times
+            </GhostButton>
           </div>
         )}
       </div>

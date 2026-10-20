@@ -158,3 +158,82 @@ npm test                                                # all workspaces: fronte
 npm run tokens                                          # regenerate tokens.css after editing the source
 cd frontend && npx playwright test                      # 8 screens vs. baseline (dev servers running)
 ```
+
+## Phase 3 — backend for the phone and the car
+
+The mobile app and Android Auto need things the web app never did: a session a phone can hold, a
+car screen whose drive state the server decides, booking from that screen, and somewhere to send
+notifications. The web In-Car Console was then rebuilt on the same car screen.
+
+### User journeys
+
+* As an owner on the phone, I stay signed in without a cookie, and signing out ends it everywhere.
+* As a driver, the head unit shows only what is safe for what the car is doing, and lets me book
+  only when parked — decided by the server from the car's own readings, not by the screen.
+* As an owner, the app tells me when something needs attention or a booking is confirmed; a
+  signed-out or handed-down phone stops getting my alerts.
+* As a demo operator, I can change what the car reports and watch the screen follow.
+
+### RED → GREEN
+
+| Behaviour | Tests | RED | GREEN |
+|---|---|---|---|
+| Mobile sessions: refresh token in the body, never a cookie; token families bound to the client that got them; a cookie can't be replayed as an app token or the reverse | `tests/auth/test_mobile_sessions.py` (12) | all failed (no `X-Client`, no body token) | passing |
+| Car screen: drive state from the latest telemetry; none / stale (>120 s) / parked-at-speed all count as moving; the client can't assert its own state | `tests/test_car.py` | module missing | passing |
+| What the screen may show comes from the G6/G7 rules, read without invoking a tool; slots never sent while moving; costs from `vehicles.yaml` | `tests/test_car.py` | as above | passing |
+| Book from the car: only when parked, only a slot in the car's own city, through the guarded scheduler; booking twice keeps one | `tests/test_car.py` | as above | passing |
+| The screen reports an upcoming booking and offers no more slots; a past appointment is not a booking | `tests/test_car.py` (+3) | `KeyError: 'booking'` | passing |
+| `/api/console/demo` retired (it ran the console tools with the page's own drive state) | `tests/test_car.py` | 200 | 404 |
+| Demo drive-state control: red-team permission and demo mode only; the screen says whether this caller has it | `tests/test_car.py` (+2) | `KeyError: 'controls'` | passing |
+| Push devices: register / list (hint, never the token) / forget own; a token moves to whoever signed in last; at most 10 per account; only Expo tokens from android/ios | `tests/test_push.py` | `ImportError: app.push` | passing |
+| Ending sessions forgets the phones (logout, admin revoke, and every other `revoke_all_for_user` caller) | `tests/test_push.py` | as above | passing |
+| `notify.push` delivers (was a stub answering `{"sent": true}`): honours `consent_push`, forgets uninstalled apps, reports an outage instead of raising | `tests/test_push.py` | as above | passing |
+| Expo sender: correct JSON, bearer only if configured, `DeviceNotRegistered` only; errors carry no URL or credential; console sender refused in production | `tests/test_push.py` | as above | 29 passing |
+| Web head unit built only from the car screen: real costs (none invented), the server's slot in the car's city, booking through the API, refusals shown, bookings shown, no tap target when touch is not allowed, no speed from a stale reading, never one car's screen for another, polls every 10 s | `src/pages/InCarConsole.test.jsx` (24), `copy.test.jsx` | 19 failed on the old component | 24 passing |
+
+Totals: backend **685** (from 650 at the end of 3c), frontend **157**, core **34**, tokens **87**.
+Visual baseline 8/8, run twice.
+
+### Mutation checks
+
+| Area | Mutations | Result |
+|---|---|---|
+| Mobile sessions | header chooses the refresh mode, and others | M3 survived at first: the binding check also refused the request, so the test passed for the wrong reason. Strengthened to require a 200 cookie refresh; then caught |
+| Car screen and booking | 7 | all caught |
+| Car screen: booking, past appointments, demo control | 5 | 1 survived (a past appointment counted as a booking — no test had one); test added, then caught |
+| Push | 17 | all caught |
+| Web head unit | 16 | all caught, after three tests were strengthened *before* running them: the touch-blocked test had no slots (so the button was disabled anyway), "Other times" never checked which slot got booked, and nothing covered a slow answer about the previous car |
+
+### Found along the way
+
+* **The web head unit could only ever say "moving" here.** With no simulator streaming and demo
+  mode off in the dev `.env`, every car's latest reading is old, so the server — correctly — treats
+  it as moving. The old page showed a parked screen because it assumed one.
+* **"0 km/h" beside a locked screen** — the speed of a stale reading. Only a live reading's speed is
+  shown now.
+* **A control that could not work.** The drive-state buttons appeared for anyone with `redteam:run`
+  and the server then refused them outside demo mode. The server now says whether the control is
+  available, and the page shows it only then.
+* **The screenshot baseline broke at midnight.** Service Ops' forecast is a 14-day window from today
+  and a CAPA draft id carries the date; both are now masked. The headline numbers above the forecast
+  come from the same window — they did not move this time, but could.
+* **The brief-stop screen offered two tap targets G6 refuses.** They now appear only if the server
+  allows touch, which at a brief stop it does not.
+
+### Known gaps / follow-ups
+
+* Push delivery needs an Expo project with FCM credentials uploaded — the owner's to set up (Phase 4).
+  Until then `PUSH_PROVIDER=console` logs notifications in development.
+* The red-team scenario that shows a tap blocked at speed is ATTACK-5 (Security Console); the in-car
+  page no longer fires guarded calls itself.
+* Untouched files still have ruff findings (`ml/predict.py`, `rca/corpus.py`, `ueba/baseline.py`,
+  `ueba/guard.py`, `tests/test_ueba_redteam.py`).
+
+### Reproduce
+
+```bash
+cd backend && python -m alembic upgrade head            # refresh_tokens.client, push_devices
+cd backend && python -m pytest tests -q                 # 685 passed (needs the backend on :8010)
+npm test                                                # frontend 157, core 34, tokens 87
+cd frontend && npx playwright test                      # 8 screens vs. baseline (dev servers running)
+```

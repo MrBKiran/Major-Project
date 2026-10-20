@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -29,7 +29,14 @@ from app.auth.methods import available_methods
 from app.auth.otp import complete_sign_in, start_challenge, verify_code
 from app.auth.phone import mask_phone, normalize_phone
 from app.auth.ratelimit import check_google, record_google_failure
-from app.auth.sessions import MfaChallenge, TokenResponse, issue_session, respond
+from app.auth.sessions import (
+    MfaChallenge,
+    SessionTransport,
+    TokenResponse,
+    issue_session,
+    respond,
+    session_transport,
+)
 from app.auth.sms import SmsSender, get_sms_sender, render_message
 from app.config import settings
 from app.db.session import engine
@@ -115,7 +122,8 @@ def _resolve_google_user(claims: GoogleClaims):
 
 
 @router.post("/google", response_model=TokenResponse | MfaChallenge)
-async def google_login(req: GoogleLoginRequest, request: Request, response: Response,
+async def google_login(req: GoogleLoginRequest, request: Request,
+                       transport: SessionTransport = Depends(session_transport),
                        verifier: GoogleVerifier = Depends(get_google_verifier)
                        ) -> TokenResponse | MfaChallenge:
     if not settings.google_client_id:
@@ -155,8 +163,8 @@ async def google_login(req: GoogleLoginRequest, request: Request, response: Resp
         raise _google_refusal(ip, reason, 403, messages[reason], subject=claims.email)
 
     try:
-        return respond(response, issue_session(user, methods=("google",), org_id=req.org_id,
-                                               role=req.role, response=response))
+        return respond(transport.response, issue_session(user, methods=("google",), org_id=req.org_id,
+                                                         role=req.role, transport=transport))
     except HTTPException as exc:
         if exc.status_code == 403:
             raise _google_refusal(ip, "membership_refused", 403, exc.detail,
@@ -239,7 +247,7 @@ _OTP_REFUSALS = {
 
 @router.post("/otp/verify", response_model=TokenResponse | MfaChallenge)
 async def otp_verify(req: OtpVerifyRequest, request: Request,
-                     response: Response) -> TokenResponse | MfaChallenge:
+                     transport: SessionTransport = Depends(session_transport)) -> TokenResponse | MfaChallenge:
     _require_phone_sign_in()
     phone = _normalised_phone_or_422(req.phone)
     ip = _client_ip(request)
@@ -265,8 +273,8 @@ async def otp_verify(req: OtpVerifyRequest, request: Request,
         raise HTTPException(status, message)
 
     try:
-        return respond(response, issue_session(user, methods=("phone_otp",), org_id=req.org_id,
-                                               role=req.role, response=response))
+        return respond(transport.response, issue_session(user, methods=("phone_otp",), org_id=req.org_id,
+                                                         role=req.role, transport=transport))
     except HTTPException as exc:
         if exc.status_code == 403:
             _audit_failure("phone_otp", "membership_refused", subject=mask_phone(phone))

@@ -48,22 +48,27 @@ def _ttl() -> dt.timedelta:
     return dt.timedelta(days=settings.refresh_token_ttl_days)
 
 
+CLIENTS = ("web", "mobile")
+
+
 def issue(conn: Connection, user_id: str, org_id: str, role: str, amr: Sequence[str],
-         *, family_id: str | None = None) -> str:
+         *, client: str = "web", family_id: str | None = None) -> str:
     """A fresh refresh token, in a new family unless `family_id` continues one.
 
-    Returns the raw token — the only time it exists outside this call's hash. The
-    caller puts it in a cookie (`set_cookie`) and never stores it itself.
+    Returns the raw token — the only time it exists outside this call's hash. A
+    `web` token goes into the httpOnly cookie (`set_cookie`); a `mobile` one into
+    the response body, for the app to keep in the OS keystore. The family stays
+    bound to that client for life.
     """
     family_id = family_id or secrets.token_urlsafe(16)
     raw = secrets.token_urlsafe(32)
     now = dt.datetime.now(dt.timezone.utc)
     conn.execute(
         text("INSERT INTO refresh_tokens "
-             "(family_id, user_id, org_id, role, amr, token_hash, issued_at, expires_at) "
-             "VALUES (:f, :u, :o, :r, :a, :h, :now, :exp)"),
+             "(family_id, user_id, org_id, role, amr, client, token_hash, issued_at, expires_at) "
+             "VALUES (:f, :u, :o, :r, :a, :c, :h, :now, :exp)"),
         {"f": family_id, "u": user_id, "o": org_id, "r": role, "a": ",".join(amr),
-         "h": _hash(raw), "now": now, "exp": now + _ttl()},
+         "c": client, "h": _hash(raw), "now": now, "exp": now + _ttl()},
     )
     return raw
 
@@ -85,10 +90,16 @@ class Rotated:
     amr: tuple[str, ...]
 
 
-def rotate(conn: Connection, raw_token: str) -> Rotated:
+def rotate(conn: Connection, raw_token: str, *, client: str = "web") -> Rotated:
     """Consume `raw_token` and mint its replacement in the same family.
 
-    Raises RefreshFailure("invalid") if the hash matches no live token;
+    `client` is how the token arrived: "web" from the cookie, "mobile" in a body.
+    A token presented the other way is "invalid" and nothing is burned — whoever
+    has a raw cookie value can already use it as a cookie; what must never
+    happen is a cookie's successor coming back in a body page script can read.
+
+    Raises RefreshFailure("invalid") if the hash matches no live token of this
+    client;
     ("raced") if it was rotated within REUSE_GRACE_S — nothing is changed;
     ("reused") — after revoking the whole family and bumping the user's
     token_version — if it had already been rotated away earlier, or revoked;
@@ -96,11 +107,11 @@ def rotate(conn: Connection, raw_token: str) -> Rotated:
     tried twice).
     """
     row = conn.execute(
-        text("SELECT id, family_id, user_id, org_id, role, amr, expires_at, used_at, revoked_at "
-             "FROM refresh_tokens WHERE token_hash = :h"),
+        text("SELECT id, family_id, user_id, org_id, role, amr, client, expires_at, used_at, "
+             "revoked_at FROM refresh_tokens WHERE token_hash = :h"),
         {"h": _hash(raw_token)},
     ).first()
-    if row is None:
+    if row is None or row.client != client:
         raise RefreshFailure("invalid")
 
     now = dt.datetime.now(dt.timezone.utc)
@@ -120,7 +131,8 @@ def rotate(conn: Connection, raw_token: str) -> Rotated:
         raise RefreshFailure("expired")
 
     amr = tuple(row.amr.split(","))
-    new_raw = issue(conn, row.user_id, row.org_id, row.role, amr, family_id=row.family_id)
+    new_raw = issue(conn, row.user_id, row.org_id, row.role, amr, client=row.client,
+                    family_id=row.family_id)
     return Rotated(raw_token=new_raw, user_id=row.user_id, org_id=row.org_id, role=row.role, amr=amr)
 
 
@@ -136,12 +148,19 @@ def revoke_all_for_user(conn: Connection, user_id: str) -> None:
     """Called everywhere `users.token_version` is bumped to end sessions: logout,
     an admin revoking another user's sessions, a password change, an MFA reset,
     deactivation. Without this a stolen access token would be dead on its next
-    request, but its refresh cookie would happily mint a fresh one forever."""
+    request, but its refresh cookie would happily mint a fresh one forever.
+
+    The account's phones are forgotten too: a signed-out phone, or one in the
+    hands of whoever the sessions were ended for, must stop getting its alerts.
+    The app registers again when it next signs in."""
+    from app import push
+
     conn.execute(
         text("UPDATE refresh_tokens SET revoked_at = :now "
              "WHERE user_id = :u AND revoked_at IS NULL"),
         {"now": dt.datetime.now(dt.timezone.utc), "u": user_id},
     )
+    push.forget_all_for_user(conn, user_id)
 
 
 def set_cookie(response: Response, raw_token: str) -> None:

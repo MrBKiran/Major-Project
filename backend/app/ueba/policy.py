@@ -193,6 +193,22 @@ class PolicyEngine:
     def _matches(patterns: list[str], tool: str) -> bool:
         return any(fnmatch.fnmatch(tool, p) for p in patterns)
 
+    def _global_rule(self, rule_id: str) -> dict:
+        return next((g for g in self.cfg.get("global_rules", []) if g.get("id") == rule_id), {})
+
+    def drive_state_blocks(self, tool: str, drive_state: str) -> bool:
+        """Would G6 block `tool` in `drive_state`? Read-only — for a screen that
+        must know what it may offer without invoking anything (and so without
+        tripping a block, or a quarantine, on every poll)."""
+        g6 = self._global_rule("G6")
+        return tool in g6.get("applies_to_tools", []) and drive_state in g6.get("blocked_when_drive_state", [])
+
+    def element_cap(self, drive_state: str) -> int | None:
+        """G7's limit on elements an alert may render in `drive_state`, or None."""
+        if drive_state not in ("DRIVING", "STOPPED_BRIEF"):
+            return None
+        return self._global_rule("G7").get("max_elements_when_driving", 1)
+
     def matrix(self) -> dict:
         """Agent × tool grid for the Security Console UI (Slide 5, left panel)."""
         return {

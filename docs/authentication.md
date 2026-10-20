@@ -88,6 +88,27 @@ page cannot read — the mitigation the previous section's `localStorage` risk w
 * An **enrolment-only** (`mfa_enroll`) session gets no refresh cookie — it is a half-signed-in
   state on purpose; silently extending it would defeat the reason it is short.
 
+### The mobile app
+
+A phone app has no cookie jar the server can rely on, so it asks for the refresh token in the body:
+
+* Sign-in requests carry **`X-Client: mobile`** (password, phone code, Google, second factor,
+  password change, switching membership). The response then holds `refresh_token`, and **no cookie
+  is set**. `web` (the default) behaves exactly as above. Anything else is `400`.
+* The app refreshes with `POST /api/auth/refresh` and a JSON body `{"refresh_token": "…"}`, and gets
+  the rotated one back in the body. Rotation, the 20-second race window and reuse-is-theft are the
+  same as for the browser.
+* **Which mode a refresh uses is decided by the body, never a header** — so page script cannot turn
+  a cookie refresh into one that hands the new token to JavaScript by adding `X-Client: mobile`.
+* **Each token family is bound to the client it was issued to** (`refresh_tokens.client`). An app
+  token sent as a cookie, or a cookie's value sent in a body, is refused — without burning the
+  session it was copied from.
+* The app should keep the token in the platform's secure storage (Keychain / Keystore via
+  `expo-secure-store`), never in plain storage.
+* Signing out (`/logout`) or any other end of sessions also **forgets the account's push devices**,
+  so a signed-out phone stops getting alerts. The app registers again on its next sign-in
+  (`POST /api/me/devices`).
+
 ### WebSocket
 
 `/ws/events` carries UEBA, red-team and job activity. A browser cannot set a header on a WebSocket
@@ -110,6 +131,8 @@ Everything is an environment variable (see [`.env.example`](../.env.example)).
 | `SMS_PROVIDER` | `console` | `console` logs the code (dev only, refused in production), `twilio`, or `none` |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` | | Real SMS |
 | `OTP_SMS_TEMPLATE` | see `.env.example` | In India the operator must have this exact text registered (TRAI DLT) |
+| `PUSH_PROVIDER` | `console` | App notifications: `console` logs them (dev only — off in production, since they carry appointment details), `expo`, or `none` |
+| `EXPO_ACCESS_TOKEN` | | Only if the Expo project enforces enhanced push security |
 
 Production start-up fails, with a message that says what to set, if `JWT_SECRET` is missing or
 weak, if `MFA_ENCRYPTION_KEY` is missing or malformed, or if the SMS template cannot carry a code.

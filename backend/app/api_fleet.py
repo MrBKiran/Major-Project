@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
@@ -173,103 +172,12 @@ async def model_metrics(_p: Principal = Depends(requires("prediction:read"))) ->
     return out
 
 
-# ── Slide 3: in-car console safety demo ─────────────────────────────────────
+# ── Slide 3: the in-car console ─────────────────────────────────────────────
 #
-# The only Slide-3 endpoint, and deliberately a POST like /runs/trigger (see
-# module docstring): it is explicit and operator-initiated, not something a
-# page load can fire, because it puts real activity into the UEBA audit trail.
-#
-# It does not simulate the G6/G7 safety rules — it invokes the actual
-# console.* tools through the real registry and guard, exactly like a live
-# customer_engagement_agent would, with the caller's chosen drive_state
-# carried on ToolContext (the same field the server treats as sole authority
-# on drive state everywhere else). Whatever decision comes back is the
-# decision the production system would have made.
-
-class ConsoleDemoRequest(BaseModel):
-    vin: str
-    drive_state: Literal["IGNITION_OFF", "PARKED", "STOPPED_BRIEF", "DRIVING"] = "PARKED"
-    speed_kmph: float = 0.0
-
-
-@router.post("/console/demo")
-async def console_demo(
-    req: ConsoleDemoRequest,
-    principal: Principal = Depends(requires("vehicle:read")),
-) -> dict:
-    from app.tools.registry import ToolBlocked, ToolContext, invoke
-    # Aliased: module-level `engine` in this file is the SQLAlchemy engine.
-    from app.ueba.policy import engine as ueba
-
-    if not await asyncio.to_thread(can_access_vin, principal, req.vin):
-        record_principal(principal, "console.demo", subject=req.vin, outcome="denied")
-        raise HTTPException(404, f"unknown vin {req.vin}")
-    record_principal(principal, "console.demo", subject=req.vin, drive_state=req.drive_state)
-
-    with engine.connect() as conn:
-        pred = conn.execute(
-            text("SELECT component, severity, days_to_failure FROM predictions "
-                 "WHERE vin = :v AND severity IS NOT NULL ORDER BY failure_prob DESC LIMIT 1"),
-            {"v": req.vin},
-        ).first()
-
-    agent_id = "customer_engagement_agent"
-    was_quarantined = ueba.scope.is_quarantined(agent_id)
-    ctx = ToolContext(
-        run_id=f"console-{uuid.uuid4().hex[:6]}", agent_id=agent_id, vin=req.vin,
-        drive_state=req.drive_state, speed_kmph=req.speed_kmph,
-    )
-    steps: list[dict] = []
-
-    async def attempt(tool_name: str, args: dict) -> bool:
-        try:
-            r = await invoke(agent_id, tool_name, args, ctx)
-            steps.append({"tool": tool_name, "decision": r.decision, "ok": r.ok})
-            return r.decision == "ALLOW"
-        except ToolBlocked as e:
-            steps.append({"tool": tool_name, "decision": "BLOCK",
-                          "risk": round(e.risk, 3), "reasons": e.reasons})
-            return False
-
-    if not pred:
-        return {"vin": req.vin, "drive_state": req.drive_state, "speed_kmph": req.speed_kmph,
-                "prediction": None, "steps": []}
-
-    alert_ok = await attempt("console.show_alert", {
-        "vin": req.vin, "severity": pred.severity, "component": pred.component,
-        "headline": f"{pred.component.replace('_', ' ').title()} may need service soon",
-        "days_to_failure": round(pred.days_to_failure) if pred.days_to_failure is not None else None,
-        "elements": 1,
-    })
-
-    if alert_ok:
-        await attempt("console.show_slots", {
-            "vin": req.vin,
-            "slots": [{"label": "Tomorrow, 10:00 AM"}, {"label": "Thu, 2:00 PM"}, {"label": "Fri, 11:30 AM"}],
-        })
-        await attempt("console.request_touch", {
-            "vin": req.vin, "prompt": "Book a slot for this service?", "options": ["Yes", "Not now"],
-        })
-
-    # This endpoint deliberately attempts the calls G6 forbids in motion — that
-    # attempt IS the demonstration. But a BLOCK quarantines the agent, so a
-    # single "Driving" simulation would otherwise leave the shared engagement
-    # agent frozen for the whole quarantine window, and the next "Parked" run
-    # would show an empty screen for a reason that has nothing to do with drive
-    # state. Release what this harness itself caused, and only that: if the
-    # agent was already quarantined on the way in, leave it alone, because that
-    # one is a real finding somebody still has to clear.
-    if not was_quarantined and ueba.scope.is_quarantined(agent_id):
-        ueba.release(agent_id)
-        steps.append({"tool": "-", "decision": "RELEASED",
-                      "note": "simulated block — quarantine cleared so the demo stays repeatable"})
-
-    return {
-        "vin": req.vin, "drive_state": req.drive_state, "speed_kmph": req.speed_kmph,
-        "prediction": {"component": pred.component, "severity": pred.severity,
-                       "days_to_failure": pred.days_to_failure},
-        "steps": steps,
-    }
+# Moved to app/api_car.py. Its old demo endpoint here ran the console tools
+# with whatever drive state the page sent; the car screen now reads the state
+# from telemetry, and the guard blocking a tap at speed is demonstrated by
+# red-team ATTACK-5.
 
 
 # ── Slide 2: demand forecast + capacity ────────────────────────────────────

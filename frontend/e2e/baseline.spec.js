@@ -46,15 +46,25 @@ const CONSOLE_TABS = [
   ["Plant Quality", "plant-quality"],
 ];
 
+// Parts drawn from today's date, which move at midnight whatever the code
+// does: the forecast is a 14-day window starting today, and a CAPA draft's id
+// carries the date it was drafted.
+const DATED = {
+  "service-ops": (page) => [page.locator(".recharts-wrapper")],
+  "plant-quality": (page) => [page.getByText(/^CAPA-DRAFT-/)],
+};
+
 for (const [tab, name] of CONSOLE_TABS) {
   test(`console: ${tab}`, async ({ page }) => {
     await signIn(page, "admin@autosaarthi.io");
     await page.getByRole("button", { name: tab, exact: true }).click();
     await settle(page);
-    // The in-car page lists the guard's live verdicts below the head unit, and
-    // which steps appear depends on the agents' rate-limit state — so only the
-    // head unit itself (the viewport) is held to the baseline there.
-    await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: name !== "in-car" });
+    // Below the head unit the in-car page explains the server's verdict, which
+    // depends on how old the car's latest reading is — so only the head unit
+    // itself (the viewport) is held to the baseline there.
+    const mask = DATED[name] ? DATED[name](page) : [];
+    for (const part of mask) await expect(part).toHaveCount(1);
+    await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: name !== "in-car", mask });
   });
 }
 
