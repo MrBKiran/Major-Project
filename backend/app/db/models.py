@@ -195,6 +195,34 @@ class MfaRecoveryCode(Base):
     used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
+class RefreshToken(Base):
+    """One issued refresh token. See app/auth/refresh.py.
+
+    Only a keyed hash is stored, never the token itself. `family_id` is shared
+    across a rotation chain (one sign-in, however many silent refreshes after
+    it); `org_id`/`role`/`amr` are copied from the session it was minted for, so
+    a refresh does not have to re-derive which membership a session was acting
+    under. Reusing a token already marked `used_at` — a replay of a cookie the
+    legitimate client has already rotated past — is how theft is detected.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    family_id: Mapped[str] = mapped_column(String(32), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"))
+    role: Mapped[str] = mapped_column(String(48))
+    amr: Mapped[str] = mapped_column(String(64))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    issued_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: dt.datetime.now(dt.timezone.utc)
+    )
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
 class RetiredMembership(Base):
     """A membership moved or removed when a role was retired from the policy.
 

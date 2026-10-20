@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     ws_auth_timeout_s: float = 5.0
     ws_recheck_s: float = 30.0
 
+    # How long the refresh cookie lives — a silent re-sign-in has to happen at
+    # least this often. The access token's own life is much shorter (see
+    # principal.TOKEN_TTL_MINUTES); that is the point of having both.
+    refresh_token_ttl_days: int = 30
+
     # ── cors ──────────────────────────────────────────────────────────────
     # Comma-separated origins. Defaults cover the local Vite dev server only —
     # a real deployment's frontend domain must be set via CORS_ORIGINS, not

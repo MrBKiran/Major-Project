@@ -16,7 +16,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { api, ApiError, getToken, setToken, setUnauthorizedHandler } from "../api.js";
+import { api, ApiError, refreshSession, setToken, setUnauthorizedHandler } from "../api.js";
 
 const AuthContext = createContext(null);
 
@@ -50,8 +50,14 @@ export function AuthProvider({ children }) {
       setPrincipal(null);
       setStatus("anon");
     });
-    if (getToken()) loadMe();
-    else setStatus("anon");
+    // The access token lives in memory only (see api.js), so a fresh page
+    // load never has one — the refresh cookie, not localStorage, is what a
+    // reload resumes from. If there is no cookie (never signed in, or it
+    // expired/was revoked) this just fails quietly into "anon".
+    (async () => {
+      if (await refreshSession()) await loadMe();
+      else setStatus("anon");
+    })();
   }, [loadMe]);
 
   /** Adopt a finished session (a TokenResponse). */

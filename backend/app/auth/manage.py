@@ -30,6 +30,7 @@ import sys
 from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import text
 
+from app.auth import refresh
 from app.auth.audit import AccessEvent, record
 from app.auth.password_policy import check_new_password
 from app.auth.policy import get_policy
@@ -125,6 +126,7 @@ def set_active(email: str, active: bool) -> None:
         conn.execute(
             text("UPDATE users SET is_active = :a, token_version = token_version + 1 "
                  "WHERE id = :u"), {"a": active, "u": user.id})
+        refresh.revoke_all_for_user(conn, user.id)
     _audit("auth.user_updated", user.email, change="activated" if active else "deactivated")
 
 
@@ -142,6 +144,7 @@ def reset_mfa(email: str) -> None:
         mfa.remove(conn, user.id)
         conn.execute(text("UPDATE users SET token_version = token_version + 1 WHERE id = :u"),
                      {"u": user.id})
+        refresh.revoke_all_for_user(conn, user.id)
     _audit("auth.mfa_reset", user.id, reset_by="manage")
 
 
@@ -154,6 +157,7 @@ def set_password(email: str, password: str) -> None:
         conn.execute(
             text("UPDATE users SET password_hash = :h, token_version = token_version + 1 "
                  "WHERE id = :u"), {"h": hash_password(password), "u": user.id})
+        refresh.revoke_all_for_user(conn, user.id)
     _audit("auth.user_updated", user.email, change="password_set")
 
 

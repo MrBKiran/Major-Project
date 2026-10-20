@@ -23,7 +23,10 @@ from app.auth.keys import signing_key
 from app.auth.policy import LOGIN_METHODS, get_policy
 
 ALGORITHM = "HS256"
-TOKEN_TTL_MINUTES = 12 * 60
+# Short-lived on purpose (Phase 7): the refresh cookie (auth/refresh.py), never
+# readable from JavaScript, is what keeps a session alive beyond this — not a
+# bearer token sitting in localStorage for half a day.
+TOKEN_TTL_MINUTES = 15
 # What a token may be used for. "full" is an ordinary session. "mfa_enroll" is issued to
 # a user whose role requires a second factor they have not set up: it can enrol and
 # nothing else, and is short-lived because it is a half-signed-in state.

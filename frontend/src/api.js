@@ -2,17 +2,22 @@
  * API client. One place that knows how to talk to the backend, so every page
  * gets auth headers, 401 handling, and error shape for free instead of
  * re-implementing fetch() plumbing five times.
+ *
+ * The access token lives in memory only — never localStorage — because it is
+ * now short-lived (15 minutes) and what actually keeps a session alive is the
+ * httpOnly refresh cookie the backend sets (app/auth/refresh.py), which script
+ * on this page cannot read even if it wanted to. `credentials: "include"` on
+ * every request is what lets that cookie travel at all.
  */
 
-const TOKEN_KEY = "autosaarthi.token";
+let accessToken = null;
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  accessToken = token || null;
 }
 
 /** Thrown for any non-2xx response. Carries status so callers can special-case
@@ -34,7 +39,41 @@ export function setUnauthorizedHandler(fn) {
   onUnauthorized = fn;
 }
 
-async function request(path, { method = "GET", body, params } = {}) {
+const RACE_RETRY_MS = 300;
+
+async function attemptRefresh(retried = false) {
+  const res = await fetch(new URL("/api/auth/refresh", window.location.origin), {
+    method: "POST",
+    credentials: "include",
+  });
+  // 409: another tab (or the page this one replaced) rotated the same cookie a
+  // moment ago. The cookie jar is shared, so it already holds that tab's new
+  // token — asking again once is enough.
+  if (res.status === 409 && !retried) {
+    await new Promise((resolve) => setTimeout(resolve, RACE_RETRY_MS));
+    return attemptRefresh(true);
+  }
+  if (!res.ok) return false;
+  setToken((await res.json()).access_token);
+  return true;
+}
+
+/** Trades the refresh cookie for a new access token. De-duplicated: several
+ * requests 401ing at once share one in-flight attempt rather than each racing
+ * the backend's refresh-token rotation, which accepts each token only once. */
+let refreshing = null;
+export function refreshSession() {
+  if (!refreshing) {
+    refreshing = attemptRefresh()
+      .catch(() => false)
+      .finally(() => {
+        refreshing = null;
+      });
+  }
+  return refreshing;
+}
+
+async function request(path, { method = "GET", body, params, _retried = false } = {}) {
   const url = new URL(path, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -49,6 +88,7 @@ async function request(path, { method = "GET", body, params } = {}) {
   const res = await fetch(url, {
     method,
     headers,
+    credentials: "include",
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
@@ -64,7 +104,18 @@ async function request(path, { method = "GET", body, params } = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized) onUnauthorized();
+    if (res.status === 401) {
+      // Only worth recovering from silently if THIS request carried a bearer
+      // token in the first place — an expired access token, not a wrong
+      // password or the first step of a sign-in (neither sends one, so this
+      // never fires for /login, /google, /otp/verify, /mfa/verify, or
+      // /refresh itself). One retry only: if the retried request is also
+      // refused, something else is wrong and it falls through to sign-out.
+      if (token && !_retried && (await refreshSession())) {
+        return request(path, { method, body, params, _retried: true });
+      }
+      if (onUnauthorized) onUnauthorized();
+    }
     // FastAPI always wraps error bodies as {"detail": ...}. `detail` unwraps
     // that once here so every caller works with the actual error value
     // (a string, OR — as with the multi-membership 400 — a structured object
@@ -93,6 +144,7 @@ async function request(path, { method = "GET", body, params } = {}) {
 async function download(path, fallbackName) {
   const token = getToken();
   const res = await fetch(new URL(path, window.location.origin), {
+    credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {

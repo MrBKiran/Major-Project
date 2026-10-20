@@ -55,10 +55,38 @@ explicitly.
 * `tv` is compared with `users.token_version` on **every request**, together with a fresh check of
   the membership and the user's active flag. Logging out, an administrator revoking sessions, a
   password change, or an MFA reset bumps it and every outstanding token dies immediately.
-* `scp` is `full`, or `mfa_enroll` — a 15-minute token that can enrol in a second factor and sign
-  out, nothing else. It is what a user whose role *requires* MFA holds until they set it up.
+* `scp` is `full`, or `mfa_enroll` — a token that can enrol in a second factor and sign out,
+  nothing else. It is what a user whose role *requires* MFA holds until they set it up.
 * The second-factor **challenge** is signed for a different audience (`autosaarthi-mfa`), so it
   cannot be used as a bearer token however it leaks.
+
+### Refresh tokens
+
+The access token is short-lived (15 minutes — `scp: full` and `scp: mfa_enroll` now expire at the
+same rate). What keeps a session alive past that is a **refresh token**, in an httpOnly cookie
+(`refresh_token`, `Path=/api/auth`, `SameSite=Lax`, `Secure` in production) that JavaScript on the
+page cannot read — the mitigation the previous section's `localStorage` risk was waiting on.
+
+* `POST /api/auth/refresh` trades the cookie for a new access token. It re-reads the membership and
+  `is_active` from the database every time — the point of a short-lived access token is that this
+  check happens every 15 minutes, not whenever a 12-hour token happened to expire.
+* The refresh token **rotates on every use**: `/refresh` consumes the one presented and sets a new
+  one, single-use, same as the one before it. Only a keyed hash of it is ever stored (see
+  [`backend/app/auth/refresh.py`](../backend/app/auth/refresh.py)).
+* **Reuse is theft.** Presenting a refresh token that was already rotated away — the legitimate
+  client moved on, someone else replayed an older copy — revokes every token in that chain *and*
+  bumps `token_version`, signing out the access token too. Both sides have to sign in again.
+* **…except within 20 seconds, which is a race.** Two tabs, or a reload while a refresh is in
+  flight, send the same cookie twice in one second. That answers `409` and changes nothing; the
+  browser's cookie jar already holds the winner's token, so the client retries once and succeeds.
+  The accepted cost: a replay inside that window is not detected (it still gets no token).
+* A refused refresh (unknown, expired, revoked, or the account no longer valid) answers `401`
+  **and clears the cookie**.
+* It is revoked everywhere a session already is: `/logout`, an administrator's
+  `/revoke-sessions`, a password change, an MFA reset (API or `manage reset-mfa`), and
+  `manage deactivate` / `manage set-password`.
+* An **enrolment-only** (`mfa_enroll`) session gets no refresh cookie — it is a half-signed-in
+  state on purpose; silently extending it would defeat the reason it is short.
 
 ### WebSocket
 
@@ -136,9 +164,6 @@ reset their second factor (`POST /api/auth/users/{id}/reset-mfa`) through the AP
 
 Stated plainly, because a security document that lists only strengths is not one.
 
-* **Bearer token in `localStorage`, 12-hour life, no refresh tokens.** Anything that can run script
-  on the page can read it. Mitigate at the web server with a strict `Content-Security-Policy`;
-  moving to short-lived tokens with an httpOnly refresh cookie is the next step and is not done.
 * **No self-service password reset.** There is no email channel. An administrator uses
   `set-password`; users can change their own password when signed in.
 * **Phone sign-in trusts the `customers.phone` column.** Whoever can write that column can take over

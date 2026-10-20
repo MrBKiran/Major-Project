@@ -27,7 +27,7 @@ from fastapi import HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from app.auth import mfa
+from app.auth import mfa, refresh
 from app.auth.audit import AccessEvent, record
 from app.auth.policy import get_policy
 from app.auth.principal import Principal, issue_mfa_challenge, issue_token
@@ -83,15 +83,23 @@ def usable_memberships(rows, method: str, *, second_factor_done: bool = True) ->
     return usable
 
 
-def mint_session(user, membership, *, amr: Sequence[str], audit_detail: dict | None = None,
-                 scope: str = "full", next_step: str | None = None) -> TokenResponse:
+def mint_session(user, membership, *, amr: Sequence[str], response: Response,
+                 audit_detail: dict | None = None, scope: str = "full",
+                 next_step: str | None = None) -> TokenResponse:
     """Token + audit line + response for a user acting in `membership`.
 
     `user` needs .id, .email, .full_name, .token_version; `membership` needs
-    .org_id, .role, .name (org name), .kind.
+    .org_id, .role, .name (org name), .kind. `response` has no default on purpose
+    — a FULL session always gets a fresh refresh cookie on it; forgetting to pass
+    one would silently leave a browser with an access token and nothing to renew
+    it when it expires in 15 minutes.
     """
     token, expires_in = issue_token(user.id, membership.org_id, membership.role,
                                     user.token_version, amr=amr, scope=scope)
+    if scope == "full":
+        with engine.begin() as conn:
+            raw_refresh = refresh.issue(conn, user.id, membership.org_id, membership.role, amr)
+        refresh.set_cookie(response, raw_refresh)
     detail = {"method": next((a for a in amr if a in ("password", "google", "phone_otp")), amr[0]),
               **({"scope": scope} if scope != "full" else {}), **(audit_detail or {})}
     record(AccessEvent(action="auth.login", principal_id=user.id,
@@ -106,7 +114,8 @@ def mint_session(user, membership, *, amr: Sequence[str], audit_detail: dict | N
                          principal=principal.describe(), next_step=next_step)
 
 
-def issue_session(user, *, methods: Sequence[str], org_id: str | None = None,
+def issue_session(user, *, methods: Sequence[str], response: Response,
+                  org_id: str | None = None,
                   role: str | None = None) -> "TokenResponse | MfaChallenge":
     """Turn an authenticated user into a session, or raise HTTPException.
 
@@ -154,10 +163,11 @@ def issue_session(user, *, methods: Sequence[str], org_id: str | None = None,
             ],
         })
 
-    return _apply_second_factor(user, chosen, methods)
+    return _apply_second_factor(user, chosen, methods, response)
 
 
-def _apply_second_factor(user, membership, methods: Sequence[str]) -> "TokenResponse | MfaChallenge":
+def _apply_second_factor(user, membership, methods: Sequence[str],
+                         response: Response) -> "TokenResponse | MfaChallenge":
     """The last gate before a session exists.
 
     - Enrolled in a second factor (voluntarily or not): owe the code — return a challenge.
@@ -167,7 +177,7 @@ def _apply_second_factor(user, membership, methods: Sequence[str]) -> "TokenResp
     - Otherwise: a full session.
     """
     if any(m in ("totp", "recovery") for m in methods):      # already passed one
-        return mint_session(user, membership, amr=methods)
+        return mint_session(user, membership, amr=methods, response=response)
 
     with engine.connect() as conn:
         enrolled = mfa.is_enrolled(conn, user.id)
@@ -178,5 +188,5 @@ def _apply_second_factor(user, membership, methods: Sequence[str]) -> "TokenResp
 
     if settings.mfa_enforcement and get_policy().roles[membership.role].mfa_required:
         return mint_session(user, membership, amr=methods, scope="mfa_enroll",
-                            next_step="mfa_enroll")
-    return mint_session(user, membership, amr=methods)
+                            next_step="mfa_enroll", response=response)
+    return mint_session(user, membership, amr=methods, response=response)

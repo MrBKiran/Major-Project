@@ -156,7 +156,7 @@ async def google_login(req: GoogleLoginRequest, request: Request, response: Resp
 
     try:
         return respond(response, issue_session(user, methods=("google",), org_id=req.org_id,
-                                               role=req.role))
+                                               role=req.role, response=response))
     except HTTPException as exc:
         if exc.status_code == 403:
             raise _google_refusal(ip, "membership_refused", 403, exc.detail,
@@ -266,7 +266,7 @@ async def otp_verify(req: OtpVerifyRequest, request: Request,
 
     try:
         return respond(response, issue_session(user, methods=("phone_otp",), org_id=req.org_id,
-                                               role=req.role))
+                                               role=req.role, response=response))
     except HTTPException as exc:
         if exc.status_code == 403:
             _audit_failure("phone_otp", "membership_refused", subject=mask_phone(phone))

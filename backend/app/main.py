@@ -80,6 +80,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    # The refresh cookie (app/auth/refresh.py) only reaches the API at all if the
+    # browser is allowed to send credentials cross-origin — the Vite dev server
+    # and the API are different origins. Safe only because allow_origins is never
+    # "*": the two together are what the CORS spec forbids.
+    allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
 )
 app.add_middleware(CorrelationMiddleware)

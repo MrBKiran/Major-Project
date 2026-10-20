@@ -16,11 +16,11 @@ import re
 import time
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from app.auth import mfa
+from app.auth import mfa, refresh
 from app.auth.audit import AccessEvent, record
 from app.auth.deps import current_principal, enrolling_principal, requires
 from app.auth.policy import get_policy
@@ -147,7 +147,7 @@ async def mfa_enroll(req: EnrollRequest | None = None,
 
 
 @router.post("/mfa/confirm")
-async def mfa_confirm(req: CodeRequest, request: Request,
+async def mfa_confirm(req: CodeRequest, request: Request, response: Response,
                       principal: Principal = Depends(enrolling_principal)) -> dict:
     ip = _ip(request)
     if (refusal := _throttled(principal.user_id, ip)) is not None:
@@ -179,7 +179,8 @@ async def mfa_confirm(req: CodeRequest, request: Request,
             user,
             SimpleNamespace(org_id=principal.org_id, role=principal.role,
                             name=principal.org_name, kind=principal.org_kind),
-            amr=[*principal.amr, "totp"], audit_detail={"reason": "mfa_enrolled"},
+            amr=[*principal.amr, "totp"], response=response,
+            audit_detail={"reason": "mfa_enrolled"},
         ).model_dump()
     return {"recovery_codes": recovery_codes, "session": session}
 
@@ -193,7 +194,7 @@ class MfaVerifyRequest(BaseModel):
 
 
 @router.post("/mfa/verify", response_model=TokenResponse)
-async def mfa_verify(req: MfaVerifyRequest, request: Request) -> TokenResponse:
+async def mfa_verify(req: MfaVerifyRequest, request: Request, response: Response) -> TokenResponse:
     try:
         challenge = decode_mfa_challenge(req.mfa_token)
     except Exception:  # noqa: BLE001 — every failure to decode is the same 401
@@ -240,7 +241,7 @@ async def mfa_verify(req: MfaVerifyRequest, request: Request) -> TokenResponse:
     clear_mfa(user.id)
     _audit("auth.mfa_verified", outcome="allowed", user_id=user.id, subject=user.email,
            factor=factor)
-    return mint_session(user, membership, amr=[*challenge["amr"], factor])
+    return mint_session(user, membership, amr=[*challenge["amr"], factor], response=response)
 
 
 # ── managing it ────────────────────────────────────────────────────────────
@@ -296,5 +297,6 @@ async def reset_users_mfa(user_id: str,
         mfa.remove(conn, user_id)
         conn.execute(text("UPDATE users SET token_version = token_version + 1 WHERE id = :u"),
                      {"u": user_id})
+        refresh.revoke_all_for_user(conn, user_id)
     _audit("auth.mfa_reset", principal, subject=user_id, reset_by=principal.user_id)
     return {"reset": True, "user_id": user_id}

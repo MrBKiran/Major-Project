@@ -5,9 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
 
+from app.auth import refresh
 from app.auth.audit import AccessEvent, record
 from app.auth.deps import current_principal, enrolling_principal, requires
 from app.auth.methods import available_methods
@@ -19,6 +21,7 @@ from app.auth.principal import (
     burn_password_work,
     has_usable_password,
     hash_password,
+    issue_token,
     needs_rehash,
     verify_password,
 )
@@ -130,9 +133,74 @@ async def login(req: LoginRequest, request: Request,
 
     # Everything after "the password is right" is shared with every other way of
     # signing in — see auth/sessions.py.
-    result = issue_session(user, methods=("password",), org_id=req.org_id, role=req.role)
+    result = issue_session(user, methods=("password",), org_id=req.org_id, role=req.role,
+                           response=response)
     clear_login(ip, req.email)
     return respond(response, result)      # 202 + a challenge while a second factor is owed
+
+
+def _refresh_refused(detail: str) -> JSONResponse:
+    # Returned, not raised: a raised HTTPException gets a fresh response, and the
+    # cookie deletion set on the injected one was silently dropped.
+    refused = JSONResponse({"detail": detail}, status_code=401)
+    refresh.clear_cookie(refused)
+    return refused
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_access_token(request: Request, response: Response) -> TokenResponse:
+    """Trade the httpOnly refresh cookie for a new, short-lived access token.
+
+    Re-validates the membership and the user's active flag fresh from the
+    database rather than trusting anything cached — that is the whole point of
+    making the access token short-lived in the first place.
+    """
+    raw = request.cookies.get(refresh.COOKIE_NAME)
+    if not raw:
+        raise HTTPException(401, "no refresh token")
+
+    # Caught INSIDE the transaction, not re-raised through it: rotate() may have
+    # already written a revocation (reuse) or a used_at mark (expiry) via this
+    # same connection, and those must commit even though the refresh itself failed.
+    with engine.begin() as conn:
+        try:
+            rotated, failure = refresh.rotate(conn, raw), None
+        except refresh.RefreshFailure as exc:
+            rotated, failure = None, exc.reason
+
+    if failure == "raced":
+        # The cookie is left alone: the jar already holds the winner's token,
+        # and deleting it here would sign out the tab that won.
+        raise HTTPException(409, "this session was refreshed a moment ago; retry")
+    if rotated is None:
+        return _refresh_refused("invalid or expired refresh token")
+
+    with engine.begin() as conn:
+        user = conn.execute(
+            text("SELECT id, email, full_name, is_active, token_version FROM users WHERE id = :u"),
+            {"u": rotated.user_id}).first()
+        membership = conn.execute(
+            text("SELECT o.name, o.kind FROM memberships m JOIN organizations o ON o.id = m.org_id "
+                 "WHERE m.user_id = :u AND m.org_id = :o AND m.role = :r"),
+            {"u": rotated.user_id, "o": rotated.org_id, "r": rotated.role}).first()
+
+    valid = (user is not None and user.is_active and membership is not None
+             and get_policy().role_valid_for(rotated.role, membership.kind))
+    if not valid:
+        return _refresh_refused("session no longer valid")
+
+    token, expires_in = issue_token(user.id, rotated.org_id, rotated.role,
+                                    user.token_version, amr=rotated.amr)
+    refresh.set_cookie(response, rotated.raw_token)
+    principal = Principal(
+        user_id=user.id, email=user.email, full_name=user.full_name,
+        org_id=rotated.org_id, org_name=membership.name, org_kind=membership.kind,
+        role=rotated.role, amr=rotated.amr,
+    )
+    record(AccessEvent(action="auth.token_refreshed", principal_id=user.id,
+                       org_id=rotated.org_id, role=rotated.role, subject=user.email,
+                       outcome="allowed"))
+    return TokenResponse(access_token=token, expires_in=expires_in, principal=principal.describe())
 
 
 class PasswordChangeRequest(BaseModel):
@@ -141,7 +209,7 @@ class PasswordChangeRequest(BaseModel):
 
 
 @router.post("/password/change", response_model=TokenResponse)
-async def change_password(req: PasswordChangeRequest,
+async def change_password(req: PasswordChangeRequest, response: Response,
                           principal: Principal = Depends(current_principal)) -> TokenResponse:
     """Change your own password.
 
@@ -194,6 +262,8 @@ async def change_password(req: PasswordChangeRequest,
                  "WHERE id = :u AND password_hash = :old RETURNING token_version"),
             {"new": hash_password(req.new_password), "u": user.id, "old": user.password_hash},
         ).first()
+        if changed is not None:
+            refresh.revoke_all_for_user(write, user.id)
     if changed is None:
         raise HTTPException(409, "the password was changed elsewhere; sign in again")
 
@@ -206,11 +276,12 @@ async def change_password(req: PasswordChangeRequest,
                         token_version=changed.token_version),
         SimpleNamespace(org_id=principal.org_id, role=principal.role,
                         name=principal.org_name, kind=principal.org_kind),
-        amr=principal.amr, audit_detail={"reason": "password_changed"})
+        amr=principal.amr, response=response, audit_detail={"reason": "password_changed"})
 
 
 @router.post("/logout")
-async def logout(principal: Principal = Depends(enrolling_principal)) -> dict:
+async def logout(response: Response,
+                 principal: Principal = Depends(enrolling_principal)) -> dict:
     """Revoke every token issued to this account, not just the one used here.
 
     There is no per-device session identity to revoke individually (see the
@@ -222,6 +293,8 @@ async def logout(principal: Principal = Depends(enrolling_principal)) -> dict:
     with engine.begin() as conn:
         conn.execute(text("UPDATE users SET token_version = token_version + 1 WHERE id = :u"),
                       {"u": principal.user_id})
+        refresh.revoke_all_for_user(conn, principal.user_id)
+    refresh.clear_cookie(response)
     record(AccessEvent(action="auth.revoke_sessions", principal_id=principal.user_id,
                         org_id=principal.org_id, role=principal.role,
                         subject=principal.user_id, outcome="allowed",
@@ -246,6 +319,8 @@ async def revoke_user_sessions(user_id: str,
             text("UPDATE users SET token_version = token_version + 1 "
                  "WHERE id = :u RETURNING id"), {"u": user_id},
         ).first()
+        if updated is not None:
+            refresh.revoke_all_for_user(conn, user_id)
     if updated is None:
         raise HTTPException(404, "unknown user")
     record(AccessEvent(action="auth.revoke_sessions", principal_id=principal.user_id,
@@ -320,7 +395,7 @@ class SwitchRequest(BaseModel):
 
 
 @router.post("/switch", response_model=TokenResponse)
-async def switch_membership(req: SwitchRequest,
+async def switch_membership(req: SwitchRequest, response: Response,
                               principal: Principal = Depends(current_principal)) -> TokenResponse:
     """Change which of the caller's own memberships is active, without asking
     for the password again.
@@ -354,7 +429,7 @@ async def switch_membership(req: SwitchRequest,
     # be born revoked too.
     user = SimpleNamespace(id=principal.user_id, email=principal.email,
                            full_name=principal.full_name, token_version=principal.token_version)
-    return mint_session(user, row, amr=principal.amr,
+    return mint_session(user, row, amr=principal.amr, response=response,
                         audit_detail={"switched_from": principal.org_id})
 
 
