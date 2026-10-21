@@ -45,3 +45,20 @@ describe("hard-coded colours", () => {
     expect(hits).toEqual([]);
   });
 });
+
+// White on the plain accent is 3.4:1 — legible for nothing. A primary button is
+// accent-deep (4.8:1) at rest, and four of them lightened to the plain accent on
+// hover, so their label failed contrast exactly when someone was about to press
+// it. A white-text button darkens on hover (accent-ink), never lightens.
+const LIGHTEN_TO_ACCENT = /hover:bg-accent(?:\/\d+)?(?=[\s"'`]|$)/;
+
+describe("hover on a white-text button", () => {
+  it.each(files(SRC).map((f) => [f.slice(SRC.length + 1)]))("never lightens to the plain accent in %s", (rel) => {
+    const lines = readFileSync(join(SRC, rel), "utf8").split("\n");
+    const hits = lines.flatMap((line, i) => {
+      const near = lines.slice(Math.max(0, i - 1), i + 2).join(" ");
+      return LIGHTEN_TO_ACCENT.test(line) && /text-white|text-on-accent/.test(near) ? [`${i + 1}: ${line.trim()}`] : [];
+    });
+    expect(hits).toEqual([]);
+  });
+});

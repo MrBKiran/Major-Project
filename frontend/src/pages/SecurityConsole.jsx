@@ -274,11 +274,11 @@ function RedTeam({ onDone }) {
                   <button
                     onClick={() => run(s.id)}
                     disabled={running === s.id}
-                    className="shrink-0 rounded-lg bg-accent-deep px-3 py-1.5 text-label font-semibold text-white transition duration-150 hover:bg-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+                    className="shrink-0 rounded-lg border border-border-strong bg-surface-card px-3 py-1.5 text-label font-semibold text-fg transition duration-150 hover:bg-surface-inset active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
                   >
                     {running === s.id ? (
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-white pulse-soft" /> Firing…
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent pulse-soft" /> Firing…
                       </span>
                     ) : "Run attack"}
                   </button>

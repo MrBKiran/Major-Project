@@ -25,7 +25,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { drivingLeft, formatDays, formatINR as inr, formatSlot, serviceDue } from "@autosaarthi/core";
+import {
+  alertBadge, COMPONENTS, componentLabel, drivingLeft, formatClock, formatINR as inr, formatSlot, OWNER,
+  serviceDue, severityWord, wearingOut,
+} from "@autosaarthi/core";
 import { Empty, Skeleton } from "../ui.jsx";
 import {
   CarDock, CarFrame, CarStatusBar, CostRows, GhostButton, Headline, MapPane,
@@ -36,28 +39,21 @@ import {
  *  counts as no reading at all, so the screen has to notice it ageing. */
 export const POLL_MS = 10_000;
 
+/** The time now, to the minute — a head unit's clock is real, not a mock-up's 9:41. */
+function useClock() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  return formatClock(now);
+}
+
 const DRIVE_STATES = [
   { id: "PARKED", label: "Parked", sub: "the car reports parked" },
   { id: "STOPPED_BRIEF", label: "Stopped briefly", sub: "the car reports a brief stop" },
   { id: "DRIVING", label: "Driving", sub: "the car reports 68 km/h" },
 ];
-
-// Plural matters: the headline reads "Your brake pads ARE wearing out" but
-// "Your water pump IS wearing out". Getting this wrong is small and extremely
-// visible — it is the first line the owner reads.
-const COMPONENT_LABEL = {
-  brake_pads: ["brake pads", true], water_pump: ["water pump", false],
-  battery: ["battery", false], fuel_injector: ["fuel injector", false],
-  oil_pump: ["oil pump", false],
-};
-
-function label(component) {
-  return (COMPONENT_LABEL[component] || [])[0] || String(component || "").replace(/_/g, " ");
-}
-
-function isPlural(component) {
-  return Boolean((COMPONENT_LABEL[component] || [])[1]);
-}
 
 function sentenceCase(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
@@ -80,6 +76,7 @@ export default function InCarConsole() {
   const [fleet, setFleet] = useState(null);
   const [vin, setVin] = useState(null);
   const [night, setNight] = useState(false);
+  const clock = useClock();
   const [carScreen, setCarScreen] = useState(null);
   const [screenError, setScreenError] = useState(null);
   const [error, setError] = useState(null);
@@ -167,7 +164,7 @@ export default function InCarConsole() {
           aria-label="Vehicle"
           value={vin || ""}
           onChange={(e) => setVin(e.target.value)}
-          className="rounded-lg border border-border bg-surface-inset/60 px-2.5 py-1.5 text-label text-fg outline-none focus:border-accent"
+          className="rounded-lg border border-border-strong bg-surface-inset/60 px-2.5 py-1.5 text-label text-fg outline-none focus:border-accent"
         >
           {fleet.map((v) => (
             <option key={v.vin} value={v.vin}>
@@ -219,8 +216,8 @@ export default function InCarConsole() {
             night={night}
             left={
               <>
-                <span style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
-                  {night ? "21:34" : state === "PARKED" ? "9:41" : "7:44"}
+                <span data-testid="head-unit-clock" style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
+                  {clock}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: 12, color: t.dim }}>
                   {state === "PARKED" ? "P" : "D"}
@@ -241,7 +238,7 @@ export default function InCarConsole() {
                 ? "brief stop · brake held"
                 : `${vin}${carScreen?.odometer ? ` · ${carScreen.odometer.toLocaleString("en-IN")} km` : ""}`
             }
-            right="LTE   fuel 46%"
+            right={carScreen?.city ?? ""}
           />
         }
         dock={<CarDock night={night} right={state === "PARKED" ? "rear camera" : "nav audio active"} />}
@@ -326,7 +323,7 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
           display: "grid", placeItems: "center", padding: 28, textAlign: "center",
         }}>
           <div>
-            <Meta night={night}>All systems nominal</Meta>
+            <Meta night={night}>{OWNER.healthyTitle}</Meta>
             <p style={{ fontFamily: SANS, fontSize: 15, color: t.dim, marginTop: 10, lineHeight: 1.5 }}>
               We only interrupt you when something is actually changing.
             </p>
@@ -349,11 +346,11 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
           background: t.alertBg,
           borderBottom: `2px solid ${t.pillInk}`, flexShrink: 0,
         }}>
-          <Pill night={night}>{alert.severity}</Pill>
+          <Pill night={night}>{severityWord(alert.severity)}</Pill>
           <span style={{ fontFamily: SANS, fontSize: 21, fontWeight: 500, color: t.ink, flex: 1 }}>
             {booking
-              ? `${sentenceCase(label(alert.component))} service booked for ${formatSlot(booking.slot_start)}.`
-              : `${sentenceCase(label(alert.component))} service needed${days != null ? ` ${serviceDue(days)}` : ""}. I'll call you about it.`}
+              ? `${sentenceCase(componentLabel(alert.component))} service booked for ${formatSlot(booking.slot_start)}.`
+              : `${sentenceCase(componentLabel(alert.component))} service needed${days != null ? ` ${serviceDue(days)}` : ""}. I'll call you about it.`}
           </span>
           <Meta night={night}>voice · hands-free</Meta>
         </div>
@@ -401,13 +398,14 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
           padding: 26, display: "flex", flexDirection: "column",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Pill night={night}>{alert.severity}</Pill>
+            <Pill night={night}>{severityWord(alert.severity)}</Pill>
             <Meta night={night}>brief stop</Meta>
           </div>
           <div style={{ marginTop: 18 }}>
+            {/* "Brake pads need" but "Water pump needs" — the first line read. */}
             <Headline
               night={night} size={27}
-              title={`${sentenceCase(label(alert.component))} ${isPlural(alert.component) ? "need" : "needs"} service${days != null ? ` ${serviceDue(days)}` : ""}`}
+              title={`${sentenceCase(componentLabel(alert.component))} ${COMPONENTS[alert.component]?.plural ? "need" : "needs"} service${days != null ? ` ${serviceDue(days)}` : ""}`}
               body="Details when you park."
             />
           </div>
@@ -420,8 +418,8 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
   // because the server sent them and allowed them.
   const rows = [
     ...(s.economics ? [
-      { label: "Repair now", value: inr(s.economics.repair_inr), strong: true },
-      { label: "If it fails on road", value: inr(s.economics.breakdown_inr), tone: "bad", strong: true },
+      { label: OWNER.repairNow, value: inr(s.economics.repair_inr), strong: true },
+      { label: OWNER.failsOnRoad, value: inr(s.economics.breakdown_inr), tone: "bad", strong: true },
     ] : []),
     ...(slot && !booking ? [{ label: "Slot", value: `${formatSlot(slot.slot_start)} · ${slot.city}` }] : []),
   ];
@@ -435,14 +433,14 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
         padding: 26, display: "flex", flexDirection: "column", overflowY: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Pill night={night}>{alert.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
+          <Pill night={night}>{alertBadge(alert)}</Pill>
           <Meta night={night}>service agent</Meta>
         </div>
 
         <div style={{ marginTop: 18 }}>
           <Headline
             night={night} size={31}
-            title={`Your ${label(alert.component)} ${isPlural(alert.component) ? "are" : "is"} wearing out`}
+            title={wearingOut(alert.component)}
             body={
               days != null
                 ? `${drivingLeft(days)}, on current use.`

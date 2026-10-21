@@ -2,9 +2,7 @@
 
 /* Colours, type and radius come from the shared tokens (packages/tokens),
    generated into tokens.css — edit packages/tokens/src/index.js, then
-   `npm run tokens`. The ink and slate names the pages still use are kept
-   there with their original values until Phase 2 moves the pages onto the
-   semantic names (surface-*, fg-*, border). */
+   `npm run tokens`. */
 @import "@autosaarthi/tokens/tokens.css";
 
 html,
@@ -24,6 +22,16 @@ body {
 .num {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+/* Headlines break into even lines instead of leaving one word alone on the
+   second ("Your water pump is wearing / out"); short paragraphs avoid a
+   one-word last line. */
+h1, h2, h3, h4 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
 }
 
 /* Thin, on-theme scrollbars — the default OS bar looks like a webpage that

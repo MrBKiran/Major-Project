@@ -237,3 +237,108 @@ cd backend && python -m pytest tests -q                 # 685 passed (needs the 
 npm test                                                # frontend 157, core 34, tokens 87
 cd frontend && npx playwright test                      # 8 screens vs. baseline (dev servers running)
 ```
+
+## Phase 4 — the owner's phone app (in progress)
+
+Expo SDK 58 (React Native 0.88, React 19), TypeScript and Expo Router in `mobile/`. It keeps its
+own install — the web app is on React 18 — and links `packages/tokens` and `packages/core`. Setup
+and layout: [mobile/README.md](../mobile/README.md).
+
+### User journeys
+
+* As an owner, I sign in on my phone with a password or a code by SMS, and stay signed in — offline
+  included — until I sign out or the server ends the session.
+* I open the app and see one sentence about my car: quiet when healthy; what is wearing, how long
+  is left and what each choice costs when not.
+* I see why the app thinks so, book or move or cancel the service myself, or talk it through with
+  the agent.
+* My phone tells me when something needs attention, and a signed-out phone stops.
+
+### RED → GREEN
+
+| Behaviour | Tests | RED | GREEN |
+|---|---|---|---|
+| Owner booking from the phone, not gated on drive state: book, move in one transaction (a slot taken meanwhile keeps the old booking), cancel; one booking per car; city and scope checked; attributed to `owner_app` | `backend/tests/test_service.py` (16) | 15 failed — no routes (one passed only because the route was missing; covered by a mutation) | 16 passing |
+| Component names, verb agreement and the reading that shows each part's wear, shared | `packages/core/src/components.test.js` (5) | module missing | 39 passing in core |
+| API client: refresh token in the body and secure storage; one refresh however many requests wait; only a *refused* refresh signs out — offline or a 5xx does not; logout forgets locally even offline | `mobile/src/lib/api.test.ts` (18) | module missing; then offline vs busy not told apart | 18 passing |
+| Sign in: email, phone code, second factor; methods the server turned off not offered; validation before sending; one request per submit | `mobile/src/screens/SignIn.test.tsx` (8) | module missing; then notices were not one accessibility element (a TalkBack fix) | 8 passing |
+| Home, evidence, history, booking, agent, account, offline banner | `mobile/src/screens/*.test.tsx`, `OfflineBanner.test.tsx` | module missing for each, run before writing the screen (Home excepted — written first, so its mutations stand in for RED) | passing |
+| Push registration only on a device, with permission and an EAS project; channel before the Android 13 prompt; a tapped notification opens only the app's own screens | `mobile/src/lib/push.test.ts` (19) | module missing | 19 passing |
+
+Totals: backend **701**, mobile **89**, frontend **157**, core **39**, tokens **87**. Mobile
+typecheck and lint clean.
+
+### Mutation checks
+
+| Area | Mutations | Result |
+|---|---|---|
+| Owner booking routes | 12 | all caught |
+| API client | 12 | 2 survived — both redundant code (a guard on a path sign-in never takes; a check the refresh step already makes). Removed |
+| Sign in | 7 | 2 "survived" individually: the in-flight ref and the busy button each stop a double submit. Removing both together is caught |
+| Home, car loading | 5 + 4 | all caught (the loader was rewritten for the React Compiler's rules and re-checked) |
+| Book | 7 | 1 equivalent mutant (same behaviour, nothing to catch); the rest caught |
+| Evidence | 5 | 2 survived — the engine-off reading sat mid-series and only one prediction existed. Test data fixed; caught |
+| Agent | 7 | all caught |
+| Push | 6 | all caught, after a lookalike link (`other://book`) was added |
+
+### Found along the way
+
+* **A fixture the server never sends.** The test session carried `name`; the server sends
+  `full_name`. Every test passed and the live Account screen showed no name. Fixtures were checked
+  against live responses after that; only this one was wrong.
+* **Testing Library 14 is async**: `render` and `fireEvent` return promises. And on Android a view
+  with a role must be `accessible` to be one TalkBack element — the error notices were not.
+* **The React Compiler's lint rules** (on in the SDK 58 template) found a ref read during render and
+  state set synchronously in effects; fixed rather than silenced. One rule (`import/namespace`)
+  cannot see an `export *` re-export and is suppressed on that one line with the reason.
+* **Flaky under load**: with the backend suite and Metro running, 1–7 screen tests exceeded Jest's
+  5 s limit. Reproduced by running suites side by side; the wait and test limits were raised, with
+  the reason in `mobile/jest.after-env.ts`.
+* **The demo database has no future service slots** — capacity ends on 12 Sep 2026 — so the phone
+  (correctly) says none are open. Re-seeding capacity is the owner's call.
+* **The web owner app still quotes repair costs from its own table** (the same bug the in-car
+  console had). The phone uses the server's.
+
+### Verified live (browser preview, `localhost:8081`)
+
+Sign-in as a seeded owner; Home quiet for a healthy car and an alert with the server's costs for
+another; evidence with the model's confidence; booking screen with no open slots; history; account;
+the protected routes returning to sign-in after a reload (the preview keeps no token); dark mode
+taking the night tokens. Not done yet: an Android emulator run, push on a device, Maestro flows.
+
+## Design critique — fixes
+
+A design critique of the web app and the phone app (skills: `ecc:design-system`,
+`ecc:frontend-design-direction`, `ecc:make-interfaces-feel-better`, `ecc:accessibility`,
+`ecc:react-native-patterns`, `frontend-design`) found 24 issues. These were fixable without a
+decision from the owner; the brand mark, the console's card layout and the label voice were
+left for one.
+
+| Fix | Tests | RED | GREEN |
+|---|---|---|---|
+| `borderStrong` (3:1 on every surface, day and night) for fields, selects and radio rings; a 4-point `space` scale | `packages/tokens/src/tokens.test.js` (+12) | 10 failed (missing tokens) | 98 passing |
+| Owner words shared by phone, web owner app and head unit: "Urgent / Soon" not P1/P2, "83% · Likely" not 0.83, a trend claimed only when the readings show it | `packages/core/src/owner.test.js` (18), `formatDay`, `formatClock`, `featureLabel` | module/functions missing | core 67 passing |
+| Phone: staff turned away (as the web owner app does); opens on phone sign-in; Home and the alert card rebuilt on the web owner card; evidence honest; one title per screen; pull-to-refresh feedback; refetch on returning to the app; responses checked with Zod | `mobile/src/**` (+11) | 12 failed — then fixtures that sent a vehicle with no VIN were rejected by the new schema, and corrected | 100 passing |
+| Web: fleet vehicles are buttons (a `<tr onClick>` could not be reached by keyboard — WCAG 2.1.1, missed by the critique's own search); the list says how many it holds; the anomaly-detector note is reviewed wording, not the artifact's internal note; model features in words; both charts have a text alternative; the chosen centre is `aria-pressed` | `FleetMonitoring.test.jsx` (5), `ServiceOps.test.jsx` (2) | 7 failed for the intended reasons | passing |
+| Four white-text buttons lightened to the plain accent on hover (3.4:1) — now darken; red-team buttons outlined; every field outlined at 3:1 | guards in `no-raw-colours.test.js`, `control-outline.test.js`, `login/parts.test.js` | 5 files flagged, then 1 more (the owner chat input) once the guard read past `=>` | 240 passing |
+| Head unit: the real time (masked in the screenshot test), the car's city instead of a fake "LTE fuel 46%", owner words on its badges | `InCarConsole.test.jsx` (+4) | 4 failed | passing |
+| Web owner app: the same owner words, confidence and trend rules; the alert glow from the token, not a raw `rgba` | `OwnerApp.test.jsx` (+4) | 9 failed (incl. the renamed "Why this part?") | 41 passing with copy tests |
+
+**Mutation checks:** phone 11/11, core 6/6, web 13/13 caught.
+
+**Visual baseline:** four screens changed (fleet, in-car, security, owner home), each reviewed as a
+screenshot before accepting; 8/8 on two runs after. The fleet list now fits its ten vehicles whole.
+
+**Found along the way**
+
+* **The critique missed a keyboard trap.** Its search for clickable non-buttons read one line at a
+  time; the fleet row's `onClick` sat on the line after `<tr`. A multi-line search found it.
+* **The new response schema caught test fixtures**, not app bugs: three screens' fixtures sent a
+  vehicle with no VIN — the shape the server never sends.
+* **Another session edited this checkout at the same time** (the web owner app's costs). Its files
+  were left alone until it finished, then built on.
+
+**Left for the owner:** the brand mark (app icon, splash, favicon), flattening the console's
+card-in-card layout and KPI tiles, and the label voice (all-caps monospace labels everywhere).
+Not done by choice: the head unit's deck-matched spacing (26 px and friends) was not moved onto the
+4-point scale.

@@ -275,7 +275,7 @@ function CapaDraft() {
                 className={`mt-5 w-full rounded-lg px-4 py-2.5 text-body font-semibold transition duration-200 ${
                   sent
                     ? "animate-in cursor-default border border-ok/40 bg-ok/15 text-ok"
-                    : "bg-accent-deep text-white hover:bg-accent active:scale-[0.98]"
+                    : "bg-accent-deep text-white hover:bg-accent-ink active:scale-[0.98]"
                 }`}
               >
                 {sent ? "✓ Sent to Manufacturing — Nashik" : "Send to Manufacturing"}

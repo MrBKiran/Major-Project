@@ -61,13 +61,14 @@ const body = (s, props = {}) => render(
 describe("head unit before the screen arrives", () => {
   it("does not claim the car is healthy", () => {
     body(null);
-    expect(screen.queryByText(/all systems nominal/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/everything reads normal/i)).not.toBeInTheDocument();
     expect(screen.getByText(/checking/i)).toBeInTheDocument();
   });
 
   it("shows the healthy screen once the server says there is nothing to raise", () => {
     body(parked({ alert: null, economics: null, slots: [] }));
-    expect(screen.getByText(/all systems nominal/i)).toBeInTheDocument();
+    expect(screen.getByText("Everything reads normal")).toBeInTheDocument();
+    expect(screen.queryByText(/nominal/i)).not.toBeInTheDocument();
   });
 });
 
@@ -119,6 +120,22 @@ describe("parked", () => {
   });
 });
 
+describe("in the driver's words", () => {
+  // The driver is the owner: the same words as the phone and the web owner app.
+  it("says how urgent when parked, without the staff code", () => {
+    body(parked());
+    expect(screen.getByText("Soon · 6 days")).toBeInTheDocument();
+    expect(screen.queryByText(/P2/)).not.toBeInTheDocument();
+    expect(screen.getByText("If it fails on the road")).toBeInTheDocument();
+  });
+
+  it("says how urgent in the one line it has while driving", () => {
+    body(moving());
+    expect(screen.getByText("Soon")).toBeInTheDocument();
+    expect(screen.queryByText(/P2/)).not.toBeInTheDocument();
+  });
+});
+
 describe("in motion", () => {
   it("is one line with nothing to tap", () => {
     body(moving());
@@ -131,6 +148,47 @@ describe("in motion", () => {
     body(moving({ drive: { state: "STOPPED_BRIEF", basis: "telemetry", speed_kmph: 0 } }));
     expect(screen.getByText(/details when you park/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+});
+
+describe("part names", () => {
+  // The headline is the first line the owner reads, so the verb has to agree
+  // with the part — and a part the page has never heard of still reads as words.
+  const alerting = (component, state, days = 3) => {
+    const alert = { component, severity: "P1", days_to_failure: days };
+    if (state === "PARKED") return parked({ alert });
+    if (state === "DRIVING") return moving({ alert });
+    return moving({ alert, drive: { state, basis: "telemetry", speed_kmph: 0 } });
+  };
+
+  it("says a plural part are wearing out when parked", () => {
+    body(alerting("brake_pads", "PARKED"));
+    expect(screen.getByRole("heading")).toHaveTextContent(/^Your brake pads are wearing out$/);
+  });
+
+  it("says a plural part need service at a brief stop", () => {
+    body(alerting("brake_pads", "STOPPED_BRIEF"));
+    expect(screen.getByRole("heading")).toHaveTextContent(/^Brake pads need service within 3 days$/);
+  });
+
+  it("says a singular part needs service today when failure is hours away", () => {
+    body(alerting("water_pump", "STOPPED_BRIEF", 0.3));
+    expect(screen.getByRole("heading")).toHaveTextContent(/^Water pump needs service today$/);
+  });
+
+  it("names a part it has no label for in words when parked", () => {
+    body(alerting("timing_belt", "PARKED"));
+    expect(screen.getByRole("heading")).toHaveTextContent(/^Your timing belt is wearing out$/);
+  });
+
+  it("names a part it has no label for in words at a brief stop", () => {
+    body(alerting("timing_belt", "STOPPED_BRIEF"));
+    expect(screen.getByRole("heading")).toHaveTextContent(/^Timing belt needs service within 3 days$/);
+  });
+
+  it("names a part it has no label for in words while driving", () => {
+    body(alerting("timing_belt", "DRIVING"));
+    expect(screen.getByText(/^Timing belt service needed within 3 days\./)).toBeInTheDocument();
   });
 });
 
@@ -246,6 +304,15 @@ describe("the console page", () => {
     expect(screen.queryByRole("button", { name: /^driving/i })).not.toBeInTheDocument();
     const rail = screen.getByRole("group", { name: /simulator/i });
     expect(within(rail).getByText(/reported by the car/i)).toBeInTheDocument();
+  });
+
+  it("shows the real time and nothing it does not know", async () => {
+    // It showed a fixed 9:41 and "LTE fuel 46%" beside real telemetry.
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-10-20T04:14:00Z") });   // 9:44 IST
+    render(<InCarConsole />);
+    await screen.findByText(/your battery is wearing out/i);
+    expect(screen.getByText("9:44")).toBeInTheDocument();
+    expect(screen.queryByText(/fuel|LTE/)).not.toBeInTheDocument();
   });
 
   it("shows the speed of a live reading", async () => {

@@ -1,12 +1,12 @@
 /** Small pieces shared by the sign-in steps and the account page, so they look alike. */
 
 export const inputCls =
-  "w-full rounded-lg border border-border bg-surface-page px-3 py-2 text-body-sm text-fg-strong " +
+  "w-full rounded-lg border border-border-strong bg-surface-page px-3 py-2 text-body-sm text-fg-strong " +
   "placeholder:text-fg-subtle outline-none transition focus:border-accent/60 focus:ring-1 focus:ring-accent/30";
 
 export const submitCls =
   "w-full rounded-lg bg-accent-deep px-4 py-2.5 text-body font-semibold text-white transition duration-150 " +
-  "hover:bg-accent/85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100";
+  "hover:bg-accent-ink active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100";
 
 export const ghostCls =
   "rounded-lg border border-border bg-surface-card px-3 py-2 text-label font-medium text-fg-secondary " +

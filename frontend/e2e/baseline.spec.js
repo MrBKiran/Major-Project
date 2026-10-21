@@ -52,6 +52,8 @@ const CONSOLE_TABS = [
 const DATED = {
   "service-ops": (page) => [page.locator(".recharts-wrapper")],
   "plant-quality": (page) => [page.getByText(/^CAPA-DRAFT-/)],
+  // The head unit shows the real time.
+  "in-car": (page) => [page.getByTestId("head-unit-clock")],
 };
 
 for (const [tab, name] of CONSOLE_TABS) {

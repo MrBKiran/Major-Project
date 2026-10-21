@@ -33,7 +33,7 @@ import { color, day, font, night } from "@autosaarthi/tokens";
 // short names so the primitives below read the way they always have.
 const kit = (m) => ({
   page: m.page, panel: m.panel, card: m.card, ink: m.fg, dim: m.fgMuted, faint: m.fgSubtle,
-  edge: m.border, hatch: m.hatch, pillBg: m.pillBg, pillInk: m.pillInk,
+  edge: m.border, edgeStrong: m.borderStrong, hatch: m.hatch, pillBg: m.pillBg, pillInk: m.pillInk,
   amberBg: m.amberBg, amberInk: m.amberInk,
   positive: m.positive, okBg: m.okBg, okBorder: m.okBorder, alertBg: m.alertBg,
   control: m.control, chrome: m.chrome, bezel: m.bezel, hatchGround: m.hatchGround,

@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { api, ApiError } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { formatDate } from "@autosaarthi/core";
+import { featureLabel, formatDate, pluralize } from "@autosaarthi/core";
 import { Badge, Card, CHART, Dialog, Empty, SeverityPill, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
 export default function FleetMonitoring() {
@@ -77,7 +77,10 @@ export default function FleetMonitoring() {
           subtitle={`Sorted by severity · ${scope.kind} scope`}
           className="overflow-hidden"
         >
-          <div className="-mx-5 -mb-5 max-h-[560px] overflow-y-auto">
+          {/* A scroll box inside a scrolling page: focusable so the keyboard can
+              scroll it, and counted below so a row cut by its edge reads as
+              "more", not as a rendering fault. */}
+          <div role="region" aria-label="Fleet list" tabIndex={0} className="-mx-5 max-h-[612px] overflow-y-auto">
             <table className="w-full text-body-sm">
               <thead className="sticky top-0 bg-surface-card">
                 <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
@@ -90,16 +93,25 @@ export default function FleetMonitoring() {
                 {vehicles.map((v) => (
                   <tr
                     key={v.vin}
+                    // The row stays clickable for a mouse; the button in it is what the
+                    // keyboard and a screen reader use (a <tr> cannot take focus).
                     onClick={() => setSelected(v.vin)}
                     className={`cursor-pointer border-b border-border/50 transition last:border-0 hover:bg-surface-inset/40 ${
                       selected === v.vin ? "bg-surface-inset shadow-[inset_3px_0_0_0_var(--color-accent)]" : ""
                     }`}
                   >
                     <td className="px-5 py-2.5">
-                      <div className="font-medium text-fg">{v.model}</div>
-                      <div className="font-mono text-caption text-fg-muted">
-                        {v.vin} · {v.city}
-                      </div>
+                      <button
+                        type="button"
+                        aria-pressed={selected === v.vin}
+                        onClick={(e) => { e.stopPropagation(); setSelected(v.vin); }}
+                        className="block w-full rounded text-left"
+                      >
+                        <span className="block font-medium text-fg">{v.model}</span>
+                        <span className="block font-mono text-caption text-fg-muted">
+                          {v.vin} · {v.city}
+                        </span>
+                      </button>
                     </td>
                     <td className="py-2.5 text-fg-tertiary">
                       {v.component ? (
@@ -123,6 +135,9 @@ export default function FleetMonitoring() {
               </tbody>
             </table>
           </div>
+          <p className="-mx-5 -mb-5 border-t border-border px-5 py-2.5 text-caption text-fg-muted">
+            {pluralize(page.total ?? vehicles.length, "vehicle")}
+          </p>
         </Card>
 
         {selected && <VehicleDetail vin={selected} canTrigger={can("agent:trigger")} />}
@@ -189,7 +204,7 @@ function ModelPerformance() {
             </table>
             {m1.shap_top_features?.length > 0 && (
               <p className="mt-2.5 text-caption text-fg-muted">
-                Weighs most on: {m1.shap_top_features.slice(0, 4).map((f) => f.feature.replace(/_/g, " ")).join(", ")}
+                Weighs most on: {m1.shap_top_features.slice(0, 4).map((f) => featureLabel(f.feature)).join(", ")}
               </p>
             )}
           </div>
@@ -211,13 +226,27 @@ function ModelPerformance() {
 
       {m4 && (
         <div className="mt-4 rounded-lg border border-border bg-surface-inset/30 px-3.5 py-3 text-caption leading-relaxed text-fg-muted">
+          {/* Reviewed wording. The artifact's own note is written for the team
+              ("Do NOT put this number on a slide") and is not product copy. */}
           <span className="font-semibold text-fg-tertiary">M4 — anomaly detector: </span>
-          not shown as a result. Its own evaluation is honest about why:{" "}
-          <span className="text-fg-muted">{m4.limitation}</span>
+          not used to raise alerts. In its evaluation, healthy and faulty vehicles score almost the
+          same: how hard a vehicle works moves the score as much as wear does. It needs load-adjusted
+          features before it can stand on its own.
         </div>
       )}
     </Card>
   );
+}
+
+/** The chart in one sentence, for a screen reader (WCAG 1.1.1). */
+function chartSummary(series) {
+  const span = (key, label, unit) => {
+    const values = series.map((r) => r[key]).filter((v) => typeof v === "number");
+    if (!values.length) return null;
+    return `${label} from ${values[0].toFixed(1)} to ${values[values.length - 1].toFixed(1)} ${unit}`;
+  };
+  const parts = [span("coolant_temp", "Coolant temperature", "°C"), span("battery_voltage", "battery voltage", "V")].filter(Boolean);
+  return parts.length ? `${parts.join(" and ")}, over the last 4 hours` : "No readings in this window";
 }
 
 function VehicleDetail({ vin, canTrigger }) {
@@ -271,7 +300,7 @@ function VehicleDetail({ vin, canTrigger }) {
               <button
                 onClick={triggerRun}
                 disabled={running}
-                className="rounded-lg bg-accent-deep px-3 py-1.5 text-label font-semibold text-white transition duration-150 hover:bg-accent active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
+                className="rounded-lg bg-accent-deep px-3 py-1.5 text-label font-semibold text-white transition duration-150 hover:bg-accent-ink active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100"
               >
                 {running ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -314,7 +343,7 @@ function VehicleDetail({ vin, canTrigger }) {
         {series.length === 0 ? (
           <Empty>No telemetry published in this window.</Empty>
         ) : (
-          <div className="h-56">
+          <div className="h-56" role="img" aria-label={chartSummary(series)}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={series}>
                 <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" vertical={false} />
@@ -605,13 +634,13 @@ function ChatModal({ vin, onClose }) {
             disabled={busy || done || !session}
             aria-label="Message to the assistant"
             placeholder={done ? "Conversation ended" : "Ask a question, or reply…"}
-            className="flex-1 rounded-lg border border-border bg-surface-page px-3 py-2 text-body-sm text-fg-strong outline-none placeholder:text-fg-subtle focus:border-accent/60 disabled:opacity-50"
+            className="flex-1 rounded-lg border border-border-strong bg-surface-page px-3 py-2 text-body-sm text-fg-strong outline-none placeholder:text-fg-subtle focus:border-accent/60 disabled:opacity-50"
           />
           <button
             onClick={send}
             aria-label="Send"
             disabled={busy || done || !input.trim() || !session}
-            className="rounded-lg bg-accent-deep px-3.5 py-2 text-white transition duration-150 hover:bg-accent active:scale-95 disabled:opacity-40"
+            className="rounded-lg bg-accent-deep px-3.5 py-2 text-white transition duration-150 hover:bg-accent-ink active:scale-95 disabled:opacity-40"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13" /><path d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>
           </button>

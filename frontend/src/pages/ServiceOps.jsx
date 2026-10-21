@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { formatDate, formatSlot, humanize, pluralize } from "@autosaarthi/core";
+import { formatDate, formatDay, formatSlot, humanize, pluralize } from "@autosaarthi/core";
 import { Badge, Card, CHART, Empty, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
 
 export default function ServiceOps() {
@@ -34,6 +34,19 @@ export default function ServiceOps() {
  * Split out from the page shell so a role with only appointment:read (a
  * service advisor books slots but doesn't plan centre capacity) still gets a
  * working page instead of being blocked on a call it has no permission for. */
+/** The forecast chart in one sentence, for a screen reader (WCAG 1.1.1). */
+function forecastSummary(centre) {
+  const expected = centre.series.map((d) => d.baseline_forecast + d.predicted_failure_jobs);
+  const range = expected.length
+    ? `expected jobs from ${Math.round(Math.min(...expected))} to ${Math.round(Math.max(...expected))} a day`
+    : "no forecast";
+  const over = centre.overloaded_days;
+  const overText = over.length
+    ? `over capacity on ${pluralize(over.length, "day")} (${over.map(formatDay).join(", ")})`
+    : "within capacity every day";
+  return `${centre.center_id}: ${range} against a capacity of ${centre.capacity}; ${overText}`;
+}
+
 function DemandForecast() {
   const [forecast, setForecast] = useState(null);
   const [error, setError] = useState(null);
@@ -94,6 +107,7 @@ function DemandForecast() {
             .map((c) => (
               <button
                 key={c.center_id}
+                aria-pressed={c.center_id === selected}
                 onClick={() => setSelected(c.center_id)}
                 className={`rounded-lg border px-3 py-2.5 text-left transition duration-150 active:scale-[0.97] ${
                   selected === c.center_id
@@ -124,7 +138,7 @@ function DemandForecast() {
           subtitle={`Forecast vs. capacity — ${active.model}`}
           right={active.overloaded_days.length > 0 && <Badge tone="danger">{pluralize(active.overloaded_days.length, "day")} over capacity</Badge>}
         >
-          <div className="h-64">
+          <div className="h-64" role="img" aria-label={forecastSummary(active)}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={active.series}>
                 <CartesianGrid stroke={CHART.grid} strokeDasharray="3 3" vertical={false} />

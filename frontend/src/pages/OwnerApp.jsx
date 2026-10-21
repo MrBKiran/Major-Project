@@ -24,22 +24,14 @@ import { color } from "@autosaarthi/tokens";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { NightProvider, useNight, usePageTheme, useSystemNight } from "../night.jsx";
-import { drivingLeft, formatDate, formatDays, formatINR, formatSlot as formatSlotTime, signalLabel } from "@autosaarthi/core";
+import {
+  alertBadge, componentLabel, componentSignal, confidence, drivingLeft, formatDate, formatINR,
+  formatSlot as formatSlotTime, OWNER, SIGNALS, signalLabel, trendSentence, wearingOut,
+} from "@autosaarthi/core";
 import {
   ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill, PhoneFrame,
   PhoneStatusBar, PrimaryButton, SANS, Spark, tokens,
 } from "../device.jsx";
-
-// `signalName` is what the owner reads; the raw column name is an engineering
-// identifier and "brake fluid pct has been falling" is not a sentence anyone
-// says out loud.
-const COMPONENT = {
-  brake_pads: { label: "brake pads", plural: true, signal: "brake_fluid_pct", signalName: "brake fluid level", unit: "%", dir: "falling" },
-  water_pump: { label: "water pump", plural: false, signal: "coolant_temp", signalName: "coolant temperature", unit: "°C", dir: "climbing" },
-  battery: { label: "battery", plural: false, signal: "battery_voltage", signalName: "battery voltage", unit: "V", dir: "falling" },
-  fuel_injector: { label: "fuel injector", plural: false, signal: "fuel_pressure", signalName: "fuel pressure", unit: "bar", dir: "falling" },
-  oil_pump: { label: "oil pump", plural: false, signal: "lub_oil_pressure", signalName: "oil pressure", unit: "bar", dir: "falling" },
-};
 
 /** Readings taken with the ignition off are not evidence of wear — the backend's
  *  `latest_reading` filters to engine-running rows before quoting a number, so
@@ -50,16 +42,19 @@ function liveRows(series) {
   return running.length ? running : series || [];
 }
 
-// Mirrors simulator/vehicles.yaml. The agent speaks the authoritative numbers;
-// these render the same pair on screens the agent is not talking on.
-const ECONOMICS = {
-  water_pump: [2400, 18500], brake_pads: [3100, 22000], battery: [4200, 14000],
-  fuel_injector: [5600, 21000], oil_pump: [3800, 26000],
-};
-
 const inr = formatINR;
-const meta = (c) => COMPONENT[c] || { label: String(c || "").replace(/_/g, " "), plural: false };
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/** The repair-vs-breakdown pair as the server sends it — the one the agent
+ *  speaks. Callers show nothing when the server has no pair; there is no
+ *  stand-in figure, because an invented price on a screen arguing for a
+ *  repair is worse than none. */
+function costRows(economics) {
+  return [
+    { label: OWNER.repairNow, value: inr(economics.repair_inr), strong: true },
+    { label: OWNER.failsOnRoad, value: inr(economics.breakdown_inr), tone: "bad", strong: true },
+  ];
+}
 
 /**
  * `standalone` is the real-device mode served at /app: the phone itself is the
@@ -79,10 +74,17 @@ export default function OwnerApp({ standalone = false }) {
   const [error, setError] = useState(null);
   const [screen, setScreen] = useState("home");
   const [booking, setBooking] = useState(null);
+  const [service, setService] = useState(null);
 
   const load = useCallback((v) => {
-    api.get(`/api/vehicle/${v}`, { minutes: 1440 })
-      .then(setDetail)
+    // The service view is read only for its costs, so a failed read leaves the
+    // screen without rupee figures — the same as a part with none on file —
+    // rather than without the alert.
+    Promise.all([
+      api.get(`/api/vehicle/${v}`, { minutes: 1440 }),
+      api.get(`/api/vehicles/${v}/service`).catch(() => null),
+    ])
+      .then(([d, s]) => { setDetail(d); setService(s); })
       .catch((e) => setError(e.message || String(e)));
   }, []);
 
@@ -99,6 +101,18 @@ export default function OwnerApp({ standalone = false }) {
 
   const t = tokens(night);
   const top = (detail?.predictions || []).find((p) => p.severity) || null;
+  // The two reads are separate queries; quote the pair only when they agree on
+  // the part, or a battery's price could sit under a water-pump headline.
+  const economics = top && service?.alert?.component === top.component ? service.economics : null;
+  // The server's booking, made here before a reload, in the car or on the
+  // mobile app. Only a confirmed one: a hold is the first half of booking, not
+  // a service the owner has got. One the agent made in this visit shows at
+  // once; the server's copy of that same appointment replaces it when the view
+  // is read again, since only the server's carries the centre's name.
+  const upcoming = service?.booking?.status === "booked" ? { ...service.booking, booked: true } : null;
+  const shownBooking = upcoming && upcoming.appointment_id === booking?.appointment_id
+    ? upcoming
+    : booking || upcoming;
 
   const body = error ? (
     <div style={{ padding: 24 }}>
@@ -108,16 +122,16 @@ export default function OwnerApp({ standalone = false }) {
   ) : !detail ? (
     <LoadingPane />
   ) : screen === "home" ? (
-    <Home detail={detail} top={top} booking={booking} go={setScreen} />
+    <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen} />
   ) : screen === "why" ? (
-    <WhyThisPart detail={detail} top={top} back={() => setScreen("home")} go={setScreen} />
+    <WhyThisPart detail={detail} top={top} economics={economics} back={() => setScreen("home")} go={setScreen} />
   ) : screen === "agent" ? (
     <AgentScreen
       vin={vin} back={() => setScreen("home")}
       onBooked={(b) => { setBooking(b); setScreen("booked"); load(vin); }}
     />
   ) : screen === "booked" ? (
-    <Booked detail={detail} top={top} booking={booking} back={() => setScreen("home")} />
+    <Booked detail={detail} top={top} economics={economics} booking={shownBooking} back={() => setScreen("home")} />
   ) : (
     <History detail={detail} back={() => setScreen("home")} />
   );
@@ -217,7 +231,7 @@ function ScreenHeader({ title, back, right }) {
 
 /* ── P04 / P05 — home ────────────────────────────────────────────────────── */
 
-function Home({ detail, top, booking, go }) {
+function Home({ detail, top, economics, booking, go }) {
   const night = useNight();
   const t = tokens(night);
   const v = detail.vehicle;
@@ -235,7 +249,7 @@ function Home({ detail, top, booking, go }) {
       {booking?.booked ? (
         <BookedCard booking={booking} onOpen={() => go("booked")} />
       ) : top ? (
-        <NowCard top={top} go={go} />
+        <NowCard top={top} economics={economics} go={go} />
       ) : (
         <HealthyCard detail={detail} />
       )}
@@ -346,47 +360,45 @@ export function HealthyCard({ detail }) {
 /** The alert. Cost framing before technical detail, per strategies.yaml —
  *  and both escape hatches sit above the primary action, because an owner who
  *  feels cornered by a service prompt stops trusting every later one. */
-export function NowCard({ top, go }) {
+export function NowCard({ top, economics = null, go }) {
   const night = useNight();
   const t = tokens(night);
-  const m = meta(top.component);
-  const [repair, breakdown] = ECONOMICS[top.component] || [3000, 20000];
   const days = top.days_to_failure;
 
   return (
     <div style={{
       border: `1px solid ${t.edge}`, borderRadius: 18, padding: 20, background: t.card,
-      boxShadow: "0 8px 30px -14px rgba(216,57,26,0.35)",
+      // The alert's glow, from the token: `59` is 35% opacity.
+      boxShadow: `0 8px 30px -14px ${color.p1}59`,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Pill night={night}>{top.severity}{days != null ? ` · ${formatDays(days)}` : ""}</Pill>
+        <Pill night={night}>{alertBadge(top)}</Pill>
         <Meta night={night}>now</Meta>
       </div>
 
       <div style={{ marginTop: 14 }}>
         <Headline
           night={night} size={27}
-          title={`Your ${m.label} ${m.plural ? "are" : "is"} wearing out`}
+          title={wearingOut(top.component)}
           body={days != null
             ? `${drivingLeft(days)}, on current use.`
             : "Wear is progressing on your current usage."}
         />
       </div>
 
-      <div style={{ marginTop: 18 }}>
-        <CostRows night={night} rows={[
-          { label: "Repair now", value: inr(repair), strong: true },
-          { label: "If it fails on road", value: inr(breakdown), tone: "bad", strong: true },
-        ]} />
-      </div>
+      {economics && (
+        <div style={{ marginTop: 18 }}>
+          <CostRows night={night} rows={costRows(economics)} />
+        </div>
+      )}
 
       <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-        <GhostButton night={night} grow onClick={() => go("why")}>Why this part</GhostButton>
-        <GhostButton night={night} grow onClick={() => go("agent")}>Talk to agent</GhostButton>
+        <GhostButton night={night} grow onClick={() => go("why")}>{OWNER.whyThisPart}</GhostButton>
+        <GhostButton night={night} grow onClick={() => go("agent")}>{OWNER.talkToAgent}</GhostButton>
       </div>
       <div style={{ marginTop: 10 }}>
-        <PrimaryButton night={night} onClick={() => go("agent")} note="nothing is booked without your yes">
-          Book a service
+        <PrimaryButton night={night} onClick={() => go("agent")} note={OWNER.nothingBooked}>
+          {OWNER.book}
         </PrimaryButton>
       </div>
     </div>
@@ -410,7 +422,7 @@ function BookedCard({ booking, onOpen }) {
         {formatSlot(booking.slot_start)}
       </div>
       <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
-        {booking.center_id} · tap for the receipt
+        {centreName(booking)} · tap for the receipt
       </Meta>
     </button>
   );
@@ -420,15 +432,22 @@ function formatSlot(iso) {
   return iso ? formatSlotTime(iso) : "Scheduled";
 }
 
+/** The centre as the owner knows it — "Hero-M&M Service, Kothrud", the name the
+ *  car and the mobile app show — not its id. The agent's own confirmation
+ *  carries only the id, so that stands in until the server's view has the name. */
+function centreName(booking) {
+  return booking?.center_name || booking?.center_id;
+}
+
 /* ── P08 — why this part ─────────────────────────────────────────────────── */
 
-function WhyThisPart({ detail, top, back, go }) {
+function WhyThisPart({ detail, top, economics, back, go }) {
   const night = useNight();
   const t = tokens(night);
   if (!top) {
     return (
       <>
-        <ScreenHeader title="Why this part" back={back} />
+        <ScreenHeader title={OWNER.whyThisPart} back={back} />
         <div style={{ padding: 22 }}>
           <p style={{ fontFamily: SANS, color: t.dim }}>No active prediction to explain.</p>
         </div>
@@ -436,52 +455,66 @@ function WhyThisPart({ detail, top, back, go }) {
     );
   }
 
-  const m = meta(top.component);
+  // The reading that shows this part's wear, in the owner's words — "brake
+  // fluid level has been falling", not the column name. A part with no such
+  // reading gets no evidence block rather than a sentence about nothing.
+  const signal = componentSignal(top.component);
+  const evidence = signal && {
+    name: signalLabel(signal.key).toLowerCase(),
+    unit: SIGNALS[signal.key].unit,
+    drift: signal.direction === "up" ? "climbing" : "falling",
+  };
   const series = liveRows(detail.series);
-  const values = series.map((r) => r[m.signal]).filter((x) => typeof x === "number");
+  const values = signal ? series.map((r) => r[signal.key]).filter((x) => typeof x === "number") : [];
   const latest = values.length ? values[values.length - 1] : null;
   const dtcs = detail.dtc_codes || [];
-  const [repair, breakdown] = ECONOMICS[top.component] || [3000, 20000];
-  const days = top.days_to_failure != null ? Math.round(top.days_to_failure) : null;
+  const sure = confidence(top.failure_prob);
 
   return (
     <>
       <ScreenHeader
-        title={cap(m.label)} back={back}
-        right={<Pill night={night}>{top.severity}{days != null ? ` · ${days}d` : ""}</Pill>}
+        title={cap(componentLabel(top.component))} back={back}
+        right={<Pill night={night}>{alertBadge(top)}</Pill>}
       />
       <div style={{ padding: "20px 18px 28px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ fontFamily: MONO, fontSize: 38, fontWeight: 600, color: t.ink, letterSpacing: "-0.02em" }}>
-            {top.failure_prob != null ? top.failure_prob.toFixed(2) : "—"}
-          </span>
-          <Meta night={night}>model confidence</Meta>
-        </div>
-
-        <div style={{ marginTop: 20 }}>
-          <Headline
-            night={night} size={21} title="Why we think so"
-            body={`Your ${m.signalName} has been ${m.dir} on an unchanged route. That pattern is wear, not weather.`}
-          />
-        </div>
-
-        {/* The evidence, drawn from the same window the Diagnosis Agent scored. */}
-        <div style={{
-          marginTop: 18, border: `1px solid ${t.edge}`, borderRadius: 14,
-          padding: 16, background: t.card,
-        }}>
-          <Spark night={night} w={340} h={64} values={values} tone={ACCENT} />
-          <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
-            <Meta night={night} style={{ textTransform: "none" }}>
-              {m.signalName} · last 24 h
-            </Meta>
-            {latest != null && (
-              <span style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
-                {latest.toFixed(1)}{m.unit}
-              </span>
-            )}
+        {sure && (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: MONO, fontSize: 38, fontWeight: 600, color: t.ink, letterSpacing: "-0.02em" }}>
+              {sure.percent}
+            </span>
+            <span style={{ fontFamily: SANS, fontSize: 14, color: t.dim }}>{`${sure.words} — how sure the model is`}</span>
           </div>
-        </div>
+        )}
+
+        {evidence && (
+          <>
+            <div style={{ marginTop: 20 }}>
+              <Headline
+                night={night} size={21} title="Why we think so"
+                // Only as strong as the readings (packages/core trendSentence).
+                body={trendSentence(top.component, values) ?? "The model flagged this from your car's earlier readings."}
+              />
+            </div>
+
+            {/* The evidence, drawn from the same window the Diagnosis Agent scored. */}
+            <div style={{
+              marginTop: 18, border: `1px solid ${t.edge}`, borderRadius: 14,
+              padding: 16, background: t.card,
+            }}>
+              <Spark night={night} w={340} h={64} values={values} tone={ACCENT} />
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
+                <Meta night={night} style={{ textTransform: "none" }}>
+                  {evidence.name} · last 24 h
+                </Meta>
+                {latest != null && (
+                  <span style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
+                    {latest.toFixed(1)}{evidence.unit}
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        )}
 
         <div style={{ marginTop: 20 }}>
           <Meta night={night}>Trouble codes</Meta>
@@ -501,12 +534,11 @@ function WhyThisPart({ detail, top, back, go }) {
           </div>
         </div>
 
-        <div style={{ marginTop: 22 }}>
-          <CostRows night={night} rows={[
-            { label: "Repair now", value: inr(repair), strong: true },
-            { label: "If it fails on road", value: inr(breakdown), tone: "bad", strong: true },
-          ]} />
-        </div>
+        {economics && (
+          <div style={{ marginTop: 22 }}>
+            <CostRows night={night} rows={costRows(economics)} />
+          </div>
+        )}
 
         <div style={{ marginTop: 18 }}>
           <PrimaryButton night={night} onClick={() => go("agent")}>Show me slots</PrimaryButton>
@@ -647,7 +679,7 @@ function AgentScreen({ vin, back, onBooked }) {
             disabled={done || busy}
             placeholder={done ? "Conversation ended" : "Ask anything about your car…"}
             style={{
-              flex: 1, borderRadius: 12, border: `1px solid ${t.edge}`, background: t.card,
+              flex: 1, borderRadius: 12, border: `1px solid ${t.edgeStrong}`, background: t.card,
               padding: "12px 14px", fontFamily: SANS, fontSize: 14, color: t.ink, outline: "none",
             }}
           />
@@ -719,11 +751,9 @@ function TypingDots() {
 
 /* ── P12 — receipt ───────────────────────────────────────────────────────── */
 
-function Booked({ detail, top, booking, back }) {
+function Booked({ detail, top, economics, booking, back }) {
   const night = useNight();
   const t = tokens(night);
-  const m = top ? meta(top.component) : null;
-  const [repair] = top ? (ECONOMICS[top.component] || [3000]) : [null];
 
   return (
     <>
@@ -740,9 +770,9 @@ function Booked({ detail, top, booking, back }) {
 
         <div style={{ marginTop: 20 }}>
           <CostRows night={night} rows={[
-            { label: "Service centre", value: booking?.center_id || "—" },
-            ...(m ? [{ label: "Work", value: cap(m.label) }] : []),
-            ...(repair ? [{ label: "Estimate", value: inr(repair), strong: true }] : []),
+            { label: "Service centre", value: centreName(booking) || "—" },
+            ...(top ? [{ label: "Work", value: cap(componentLabel(top.component)) }] : []),
+            ...(economics ? [{ label: "Estimate", value: inr(economics.repair_inr), strong: true }] : []),
             { label: "Reference", value: booking?.appointment_id || "—" },
             { label: "Vehicle", value: detail.vehicle.vin },
           ]} />

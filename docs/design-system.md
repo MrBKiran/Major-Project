@@ -19,13 +19,22 @@ the head unit, and (from Phase 4) the React Native app and its Android Auto scre
    switches at dusk. A test enforces parity.
 3. **Every text token clears 4.5:1** on page, panel and card, in both modes — this app's dimmest text
    is 11px, so the large-text 3:1 allowance never applies. Badge ink is checked on its own 10% tint.
-4. **New code uses semantic names** (`surface-*`, `fg-*`, `border`). The legacy `ink-*` / `slate-*`
-   names exist only so the token source could land without changing a pixel.
-5. **Times are IST**, built by `formatSlot` / `formatDate` — never `toLocaleString`.
+4. **Semantic names only** (`surface-*`, `fg-*`, `border`). The legacy `ink-*` / `slate-*` names were
+   removed in Phase 2, and a test keeps them out.
+5. **Times are IST**, built by `formatSlot` / `formatDate` / `formatDay` / `formatClock` — never
+   `toLocaleString`.
+6. **A control's outline is `borderStrong`** (3:1, WCAG 1.4.11) — text fields, selects, a radio's
+   ring. `border` (~1.3:1) is for dividers.
+7. **Owners read owner words.** Severity is "Urgent / Soon / Worth watching", never P1/P2/P3;
+   confidence is "83% · Likely", never 0.83; a trend is claimed only when the readings show it. The
+   words live in `packages/core` (`OWNER`, `alertBadge`, `confidence`, `trendSentence`) and are
+   shared by the phone, the web owner app and the head unit.
+8. **The phone spaces on the 4-point `space` scale** from the tokens; the web uses Tailwind's,
+   which is the same step.
 
 ## Tokens
 
-**Surfaces:** `page` `panel` `card` `inset` `insetStrong` · `border` · `hatch`.
+**Surfaces:** `page` `panel` `card` `inset` `insetStrong` · `border` `borderStrong` · `hatch`.
 **Text, most to least prominent:** `fgStrong` `fg` `fgSecondary` `fgTertiary` `fgMuted`
 `fgSubtle` (+ `fgDecorative`, fills only). **Brand / severity:** `accent` `accentDeep`, `p1` `p2`
 `p3` `ok` and their `*Ink` variants. **Charts:** `grid` `axis` `baseline` `predicted` `capacity`
@@ -35,6 +44,8 @@ the head unit, and (from Phase 4) the React Native app and its Android Auto scre
 `lead` 15 · `titleSm` 17 · `title` 21 · `display` 27 · `displayLg` 31 · `hero` 38 — Tailwind `text-caption` …
 
 **Radius:** `chip` 6 · `control` 10 · `card` 12 · `panel` 16 · `pill` 999 — `rounded-card` …
+
+**Space:** 0 · 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 48 (`space[1]` … `space[12]`), for the phone.
 
 ## Enforced by tests
 
@@ -48,6 +59,10 @@ These are not conventions; a test fails when they are broken.
 | No retired `ink-*` / `slate-*` / `edge` names | `frontend/src/test/legacy-names.test.js` |
 | Every token has day + night; every text token ≥ 4.5:1 on every surface, in both modes | `packages/tokens/src/tokens.test.js` |
 | White text sits on `accentDeep` (4.8:1), never the plain accent (3.4:1) | same file |
+| …including on hover: a white-text button darkens (`accent-ink`), never lightens | `frontend/src/test/no-raw-colours.test.js` |
+| Every input, select and textarea is outlined at 3:1 | `frontend/src/test/control-outline.test.js` |
+| `borderStrong` clears 3:1 on every surface, both modes; spacing is a 4-point scale | `packages/tokens/src/tokens.test.js` |
+| Owner wording: no staff codes, confidence in words, no trend the readings do not show | `packages/core/src/owner.test.js` |
 | Every screen matches the reviewed screenshots | `frontend/e2e/baseline.spec.js` |
 
 ## Night mode
