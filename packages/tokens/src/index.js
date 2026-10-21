@@ -40,6 +40,9 @@ export const day = {
   inset: "#f3f4f6",
   insetStrong: "#e4e7ea",
   border: "#d7dade",
+  // A control's own edge — text fields, selected options. `border` is a
+  // divider at ~1.3:1; a field found only by its outline needs 3:1 (WCAG 1.4.11).
+  borderStrong: "#828891",
   hatch: "#dfe2e6",
 
   // Text, most to least prominent. Each step clears 4.5:1 on page, panel and card.
@@ -78,6 +81,7 @@ export const night = {
   inset: "#1f242b",
   insetStrong: "#262b33",
   border: "#272c33",
+  borderStrong: "#69707a",
   hatch: "#1a1e24",
 
   fgStrong: "#f3f4f6",
@@ -138,6 +142,12 @@ export const text = {
   display: { size: 27, lineHeight: 1.15 },
   displayLg: { size: 31, lineHeight: 1.1 },
   hero: { size: 38, lineHeight: 1.05 },     // the one big number on a screen
+};
+
+/** A 4-point spacing scale for the phone and the head unit. The web console
+ *  uses Tailwind's, which is the same 4px step. */
+export const space = {
+  0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, 10: 40, 12: 48,
 };
 
 export const radius = {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { renderCss } from "../scripts/build-css.js";
-import { chart, color, contrast, day, mix, night, radius, text } from "./index.js";
+import { chart, color, contrast, day, mix, night, radius, space, text } from "./index.js";
 
 describe("modes", () => {
   it("define the same tokens by day and by night", () => {
@@ -39,6 +39,12 @@ describe.each([["day", day], ["night", night]])("%s contrast", (_, mode) => {
   // 3.5:1 on white — the colour of the brand, not of legible small text.
   it.each(["page", "panel", "card", "okBg"])("positive text clears 4.5:1 on %s", (bg) => {
     expect(contrast(mode.positive, mode[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // WCAG 2.2 SC 1.4.11: a text field is found by its outline, and `border`
+  // (1.2–1.4:1) is a divider, too faint to be a field's only edge.
+  it.each(["page", "panel", "card", "inset"])("a control's outline clears 3:1 on %s", (bg) => {
+    expect(contrast(mode.borderStrong, mode[bg])).toBeGreaterThanOrEqual(3);
   });
 
   it("the driving alert band keeps its text legible", () => {
@@ -107,6 +113,13 @@ describe("scales", () => {
     expect(Object.keys(text).length).toBeLessThanOrEqual(10);
   });
 
+  it("spacing is a 4-point scale, growing", () => {
+    const steps = Object.values(space);
+    for (const v of steps) expect(v % 4).toBe(0);
+    expect(steps).toEqual([...steps].sort((a, b) => a - b));
+    expect(new Set(steps).size).toBe(steps.length);
+  });
+
   it("radii grow monotonically", () => {
     const r = Object.values(radius);
     expect(r).toEqual([...r].sort((a, b) => a - b));
@@ -153,5 +166,16 @@ describe("tokens.css", () => {
     expect(css).toContain("--text-body: 14px;");
     expect(css).not.toMatch(/--text-(xs|sm|base|lg|xl):/);
     expect(css).not.toMatch(/--radius-(xs|sm|md|lg|xl):/);
+  });
+
+  it("gives controls their stronger outline, by day and night", () => {
+    expect(css).toContain(`--color-border-strong: ${day.borderStrong};`);
+    expect(css).toContain(`--color-border-strong: ${night.borderStrong};`);
+  });
+
+  it("leaves spacing to Tailwind's own 4px scale on the web", () => {
+    // Tailwind's --spacing is already 0.25rem; the space tokens are for the
+    // phone and the head unit, which have no Tailwind.
+    expect(css).not.toMatch(/--spacing/);
   });
 });

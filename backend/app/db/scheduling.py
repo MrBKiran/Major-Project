@@ -238,3 +238,53 @@ def cancel_appointment(appointment_id: str, reason: str = "") -> dict:
         appt.status = "cancelled"
         session.commit()
         return {"cancelled": True, "appointment_id": appointment_id, "reason": reason}
+
+
+def reschedule_appointment(vin: str, center_id: str, slot_start: str,
+                           created_by: str | None = None) -> dict:
+    """Move the vehicle's upcoming booking to another open slot, in one
+    transaction: the new bay is taken and the old one released together, so a
+    slot that went in the meantime leaves the original booking exactly as it was."""
+    start = dt.datetime.fromisoformat(slot_start)
+    with SessionLocal() as session:
+        if session.get(Vehicle, vin, with_for_update=True) is None:
+            return {"moved": False, "error": f"unknown vin {vin}"}
+        current = next((a for a in _upcoming(session, vin) if a.status == "booked"), None)
+        if current is None:
+            return {"moved": False, "error": "this vehicle has no upcoming booking to move"}
+        if current.center_id == center_id and current.slot_start == start:
+            return {"moved": True, **_describe(session, current)}
+
+        bay = session.execute(
+            select(CapacitySlot)
+            .where(CapacitySlot.center_id == center_id, CapacitySlot.slot_start == start,
+                   CapacitySlot.status == "open")
+            .limit(1).with_for_update(skip_locked=True)
+        ).scalar_one_or_none()
+        if bay is None:
+            return {"moved": False, "error": "no open slot at that time",
+                    "existing": _describe(session, current)}
+
+        bay.status = "booked"
+        moved = Appointment(id=f"APT-{uuid.uuid4().hex[:10]}", vin=vin, center_id=center_id,
+                            slot_start=start, status="booked", created_by_agent=created_by)
+        session.add(moved)
+        _release_bay(session, current.center_id, current.slot_start, "booked")
+        current.status = "cancelled"
+        session.commit()
+        return {"moved": True, **_describe(session, moved)}
+
+
+def cancel_upcoming(vin: str) -> dict:
+    """Cancel the vehicle's upcoming booking (or hold) and reopen its bay."""
+    with SessionLocal() as session:
+        if session.get(Vehicle, vin, with_for_update=True) is None:
+            return {"cancelled": False, "error": f"unknown vin {vin}"}
+        upcoming = _upcoming(session, vin)
+        if not upcoming:
+            return {"cancelled": False, "error": "this vehicle has no upcoming booking"}
+        for appt in upcoming:
+            _release_bay(session, appt.center_id, appt.slot_start, appt.status)
+            appt.status = "cancelled"
+        session.commit()
+        return {"cancelled": True, "appointment_ids": [a.id for a in upcoming]}

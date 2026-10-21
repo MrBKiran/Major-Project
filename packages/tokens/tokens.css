@@ -8,6 +8,7 @@
   --color-surface-inset: #f3f4f6;
   --color-surface-inset-strong: #e4e7ea;
   --color-border: #d7dade;
+  --color-border-strong: #828891;
   --color-hatch: #dfe2e6;
   --color-fg-strong: #0f1115;
   --color-fg: #16181d;
@@ -98,6 +99,7 @@
   --color-surface-inset: #1f242b;
   --color-surface-inset-strong: #262b33;
   --color-border: #272c33;
+  --color-border-strong: #69707a;
   --color-hatch: #1a1e24;
   --color-fg-strong: #f3f4f6;
   --color-fg: #e8eaed;

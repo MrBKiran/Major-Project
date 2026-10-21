@@ -12,9 +12,10 @@ what matters for scale is that the ceiling exists, so no caller can ask for
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
-from fastapi import Query
+from fastapi import HTTPException, Query
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
@@ -45,3 +46,13 @@ def page_params(
     offset: int = Query(0, ge=0, description="Rows to skip."),
 ) -> Page:
     return Page(limit=limit, offset=offset)
+
+
+async def require_vin(principal, vin: str, action: str) -> None:
+    """404, not 403: a car outside the caller's scope does not exist for them."""
+    from app.auth.audit import record_principal
+    from app.auth.scope import can_access_vin
+
+    if not await asyncio.to_thread(can_access_vin, principal, vin):
+        record_principal(principal, action, subject=vin, outcome="denied")
+        raise HTTPException(404, f"unknown vin {vin}")

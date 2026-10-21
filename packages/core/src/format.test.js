@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  drivingLeft, formatDate, formatDays, formatINR, formatSlot, humanize, pluralize, serviceDue,
+  drivingLeft, formatClock, formatDate, formatDay, formatDays, formatINR, formatSlot, humanize, pluralize, serviceDue,
 } from "./format.js";
 
 describe("pluralize", () => {
@@ -139,5 +139,23 @@ describe("humanize", () => {
   it("is empty for nothing", () => {
     expect(humanize("")).toBe("");
     expect(humanize(null)).toBe("");
+  });
+});
+
+describe("formatDay", () => {
+  it("is a day, without the year or a time", () => {
+    expect(formatDay("2026-10-22")).toBe("Thu 22 Oct");
+  });
+
+  it("is the day in India for a moment", () => {
+    // 20:00 UTC on the 21st is 01:30 IST on the 22nd.
+    expect(formatDay("2026-10-21T20:00:00Z")).toBe("Thu 22 Oct");
+  });
+});
+
+describe("formatClock", () => {
+  it("is the time in India, as a car's clock shows it", () => {
+    expect(formatClock("2026-10-20T04:14:00Z")).toBe("9:44");
+    expect(formatClock("2026-10-20T16:04:00Z")).toBe("21:34");
   });
 });

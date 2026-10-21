@@ -21,10 +21,11 @@ import uuid
 from fastapi import HTTPException
 from sqlalchemy import text
 
-from app.db.scheduling import ACTIVE_STATUSES, _to_ist, get_open_slots
+from app.db.scheduling import get_open_slots
 from app.db.session import engine
 from app.graph.master import BOOKING_PLAN_ADDITIONS
-from app.llm.persuasion import component_economics
+from app.owner_service import alert_for, booking_for, economics_for
+from app.owner_service import vehicle as _vehicle
 from app.tools.registry import ToolBlocked, ToolContext, invoke
 from app.ueba.policy import engine as guard
 
@@ -72,44 +73,12 @@ def allowed_in(state: str) -> dict:
     }
 
 
-def _vehicle(vin: str):
-    with engine.connect() as c:
-        return c.execute(text("SELECT vin, model, odometer, city FROM vehicles WHERE vin = :v"),
-                         {"v": vin}).first()
-
-
-def _alert(vin: str) -> dict | None:
-    with engine.connect() as c:
-        p = c.execute(text("SELECT component, severity, days_to_failure FROM predictions "
-                           "WHERE vin = :v AND severity IS NOT NULL "
-                           "ORDER BY failure_prob DESC, ts DESC LIMIT 1"), {"v": vin}).first()
-    if p is None:
-        return None
-    return {"component": p.component, "severity": p.severity, "days_to_failure": p.days_to_failure}
-
-
-def _booking(vin: str) -> dict | None:
-    """The car's next appointment, so a reloaded screen does not offer to book
-    a car that is already booked."""
-    with engine.connect() as c:
-        a = c.execute(text(
-            "SELECT a.id, a.center_id, sc.name, sc.city, a.slot_start, a.status "
-            "FROM appointments a JOIN service_centers sc ON sc.id = a.center_id "
-            "WHERE a.vin = :v AND a.status = ANY(:s) AND a.slot_start > now() "
-            "ORDER BY a.slot_start LIMIT 1"), {"v": vin, "s": list(ACTIVE_STATUSES)}).first()
-    if a is None:
-        return None
-    return {"appointment_id": a.id, "center_id": a.center_id, "center_name": a.name,
-            "city": a.city, "slot_start": _to_ist(a.slot_start).isoformat(), "status": a.status}
-
-
 def screen(vin: str) -> dict:
     vehicle = _vehicle(vin)
     drive = drive_state(vin)
     allowed = allowed_in(drive["state"])
-    alert = _alert(vin)
-    econ = component_economics(alert["component"]) if alert else None
-    booking = _booking(vin)
+    alert = alert_for(vin)
+    booking = booking_for(vin)
 
     slots = []
     # Not merely hidden while moving: never sent, so no client can render them.
@@ -119,8 +88,7 @@ def screen(vin: str) -> dict:
     return {
         "vin": vin, "model": vehicle.model, "odometer": vehicle.odometer, "city": vehicle.city,
         "drive": drive, "allowed": allowed, "alert": alert,
-        "economics": {"repair_inr": econ["repair_cost"], "breakdown_inr": econ["breakdown_cost"]}
-        if econ else None,
+        "economics": economics_for(alert),
         "booking": booking,
         "slots": slots,
     }

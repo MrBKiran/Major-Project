@@ -68,6 +68,20 @@ export function formatDate(value) {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** "9:44", "21:34" — the time in India, as a car's clock shows it. */
+export function formatClock(value) {
+  const d = inIST(value);
+  if (!d) return MISSING;
+  return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+/** "Thu 22 Oct" — a day, without the year or a time. */
+export function formatDay(value) {
+  const d = inIST(value);
+  if (!d) return MISSING;
+  return `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
 /** "Sat 5 Sep, 10:00 am" — a booking slot or any moment someone acts on. */
 export function formatSlot(value) {
   const d = inIST(value);
