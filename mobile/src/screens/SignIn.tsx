@@ -123,9 +123,9 @@ export default function SignIn() {
             </>
           ) : method === 'email' ? (
             <>
-              <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address"
+              <Field testID="email" label="Email" value={email} onChangeText={setEmail} keyboardType="email-address"
                      autoCapitalize="none" autoComplete="email" textContentType="emailAddress" />
-              <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry
+              <Field testID="password" label="Password" value={password} onChangeText={setPassword} secureTextEntry
                      autoComplete="current-password" textContentType="password" onSubmitEditing={submitEmail} />
               <Button onPress={submitEmail} busy={busy}>Sign in</Button>
             </>

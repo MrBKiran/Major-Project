@@ -37,7 +37,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/with-windows-cmake.js"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -342,3 +342,119 @@ screenshot before accepting; 8/8 on two runs after. The fleet list now fits its 
 card-in-card layout and KPI tiles, and the label voice (all-caps monospace labels everywhere).
 Not done by choice: the head unit's deck-matched spacing (26 px and friends) was not moved onto the
 4-point scale.
+
+## Redesign — flatter console, calmer labels
+
+The owner chose two of the critique's open items: flatten the console and calm the labels.
+
+| Change | Tests |
+|---|---|
+| `Stat` tiles replaced by `StatStrip`: one framed `<dl>` per page, or bare inside a card; the skeleton has the same shape | `frontend/src/ui.test.jsx` (one list, terms paired with figures, tone) |
+| Security: the policy matrix and the red-team list are divided rows, not cards in a card; the side box holds the live state and the audit-chain check ("Intact: N rows" / "Broken at row N") | `copy.test.jsx`, Playwright baseline |
+| Labels in sentence case, everywhere: table headers, badges, the head unit's status lines, the phone's `Meta` and `Pill` | new guards `frontend/src/test/label-voice.test.js`, `mobile/src/test/label-voice.test.ts` |
+| Monospace kept only for data (VIN · km lines, codes, the head unit's placeholders) | review |
+| Card titles are `<h2>` | `ui.test.jsx` |
+
+**Visual review.** Six screens changed. The review caught two flaws:
+* The security policy counts sat 10 px below their badge, a margin left over from the card layout. They also shifted with the badge's width. The badge now has a fixed slot.
+* "Redistribution suggestions" was drawn in the brand red beside the red overload count. It now reads as an ordinary figure.
+
+After fixing these, the baseline was accepted and passed 8/8 on three runs.
+
+**Suites at the end:** web 264, core 67, tokens 98, mobile 131 (typecheck and lint clean), backend 705, Playwright 8.
+
+## Demo capacity
+
+The demo's booking slots were running out, because seeded days only reach 21 days from the original seed date. `extend_capacity` in `backend/app/db/seed.py` fixes this. It opens the coming 21 days for any centre that has no slots on a day, skips Sundays, and never touches a day that already has slots. That means existing bookings are safe. Run it with `backend/scripts/extend_capacity.py`.
+
+* Tests: `backend/tests/test_capacity.py` (4). Mutations: 3 of 3 caught.
+* The first of those tests counted only slots still ahead of now, so after 17:00 IST (the last slot
+  hour) it missed today and failed every evening. It now counts from the start of today, in IST
+  throughout; a calendar starting tomorrow, or open on Sundays, is still caught.
+* Run against the demo database, it opened 2,880 slots. A second run added none, and the 10 existing bookings were kept.
+
+## Brand mark
+
+The owner chose "Road ahead" from two drafts reviewed at real sizes (app icon, Android circle and
+themed icon, home screen, 48/32/16 px, browser tab, splash, web header; day and night). The other
+draft, a wheel with a pulse, read like a fitness app and blurred at 16 px.
+
+* **One source.** `design/brand/road.svg`; `node design/brand/render.mjs` renders the phone's
+  `icon.png` (1024), the adaptive foreground and themed layers (1024, mark inside the safe zone),
+  a splash mark per mode (1024; `accentDeep` on the day page, `accent` on the night page), the
+  phone's web favicon (48), and the console's `favicon.svg`, `favicon-48.png` and
+  `apple-touch-icon.png` (180). Colours come from the tokens package.
+* **App config.** The adaptive icon sits on the accent as a colour (no background image); the
+  night splash has its own mark; iOS uses the 1024 PNG (the template's Icon Composer file, still
+  the Expo logo, is gone — iOS is not a target yet).
+* **Web.** `BrandMark` replaces the "A" letter tile in the console header and on both sign-in
+  pages (the sign-in tile's raw `rgba` shadow went with it).
+* **Expo's own guidance was checked first** (SDK 58 docs): adaptive layers at least 512 px, a
+  1024 px transparent splash image, a separate `dark.image`.
+
+| Guarantee | Test | RED | GREEN |
+|---|---|---|---|
+| Every icon `app.json` names exists, at the size asked for; adaptive icon on the accent colour; a splash mark per mode on that mode's page colour; the mark at 3:1+ wherever drawn | `mobile/src/test/brand.test.ts` (11) | 3 failed: template foreground, grey background, one splash image for both modes | 11 passing |
+| The console links an SVG favicon, a 48 px PNG and an iOS icon, all present; the favicon and the header mark draw `road.svg`'s own path, on the accent | `frontend/src/test/brand.test.js` (5) | 4 failed (no files, no links) | passing |
+| The header mark is decoration to a screen reader, drawn in tokens | `frontend/src/ui.test.jsx` (2) | `BrandMark` did not exist | passing |
+
+**Mutation checks:** 7 of 7 caught (grey background back, one splash for both modes, a template
+background image back, the mark announced, the mark drifting from its source, the favicon off the
+accent, a favicon link dropped).
+
+## Header and head unit, found while reviewing the mark
+
+Reviewing the screenshots for the mark turned up four faults that predate it:
+
+* **Every tab label broke onto two lines below about 1300 px**, the common laptop width: the row
+  needed 1281 px. Now labels never break; the account menu is capped (14rem, 18rem from 1366 px,
+  so its org and role show whole at 1440); below `xl` the caption drops and the account menu shows
+  its avatar, its words kept for a screen reader; narrower still, the row scrolls, with padding
+  so the focus ring is not clipped.
+* **The tab highlight sat 5 px short of its tab** in every screenshot: measured once, before the
+  web font arrived. It is re-measured whenever the row reflows.
+* **The head unit's gear letter and VIN line moved at 10:00**, when the clock gained a digit — and
+  so did the in-car screenshot, with the time of day. The clock reserves five characters.
+* **The owner app's loading pane was three grey blocks**, silent to a screen reader and invisible
+  to the screenshot test's wait, which caught it once mid-load. It is a `status` saying
+  "Loading your car…".
+
+| Guarantee | Test | RED | GREEN |
+|---|---|---|---|
+| Tabs one line at 1024, 1280 and 900 px (scrolling there), every tab in view at 1024 and 1280, account menu reachable, org line whole at 1440 | `frontend/e2e/baseline.spec.js` "console header" | tabs 51 px tall at 1024 | passing |
+| The highlight follows its tab when the row reflows | `App.test.jsx` | stayed at its first measure | passing |
+| The account menu keeps its name for a screen reader where its words are hidden | `App.test.jsx` | words always shown | passing |
+| The clock keeps one width | `InCarConsole.test.jsx` | no reserved width | passing |
+| The owner app says it is loading, to a screen reader too | `OwnerApp.test.jsx` | no status | passing |
+
+**Mutation checks:** 6 of 6 behaviours caught. Dropping `whitespace-nowrap` alone survives — the
+tabs' `shrink-0` already keeps a label whole; dropping both is caught at 900 px. Both stay.
+
+**Visual baseline:** five console screens changed and every changed pixel was accounted for: the
+mark (656 px on each), Fleet's corrected highlight, and the head unit's clock slot. Owner home
+and the sign-in checks were unchanged; both sign-in pages were also checked by eye.
+
+## The demand forecast: one fit per history
+
+Accepting the screenshots for the brand mark took three runs, then failed twice — once on Service
+Ops, once with the in-car page waiting over a minute for its vehicle list. The server's log showed
+why: `/api/forecast` refitted SARIMAX for all eleven centres on every request (7.7 s alone), the fit
+holds the interpreter, and two at once took up to 61 s while sign-in took 12 s and the fleet list
+74 s. A demo with Service Ops open in two tabs would have stalled the same way.
+
+* **The fit is kept** (`app/ml/forecast.py`, `_baseline`) per centre, horizon and the exact history
+  it was fitted on — a changed day of history is a new fit. At most 64 are kept.
+* **The live part stays live:** the predicted-failure load and the capacity are read on every
+  request; only the statistical baseline is reused.
+* **One fit at a time per key:** a request that arrives while a fit is running waits for it.
+* **Measured** through the API after a restart: 7.3 s cold, 0.35 s warm; an appointments request
+  beside it 0.12 s.
+
+| Guarantee | Test | RED | GREEN |
+|---|---|---|---|
+| A second forecast reuses the fit; three requests at once share one | `backend/tests/test_forecast_cache.py` | 2 and 3 fits | 1 fit |
+| A changed history, or another horizon, is fitted again | same | (guards against an over-eager cache) | passing |
+| Predicted failures change the forecast without a refit | same | refitted | 1 fit, the new load shown and flagged |
+
+**Mutation checks:** 4 of 4 caught (a key without the history, a key without the horizon, no
+single-flight lock, no cache).

@@ -1,0 +1,20 @@
+# An urgent alert reads in owner words, and "Why this part?" shows the evidence.
+appId: io.autosaarthi.owner
+name: Home with an urgent alert
+---
+- runFlow:
+    file: common/sign-in.yaml
+    env:
+      EMAIL: aditi.nair@example.in
+- extendedWaitUntil:
+    visible: "Thar Roxx"
+    timeout: 30000
+- assertVisible: "Urgent.*"
+- assertNotVisible: "P1"
+- assertVisible: "Nothing is booked without your yes"
+- tapOn: "Why this part?"
+- extendedWaitUntil:
+    visible: "Why this part"
+    timeout: 15000
+- back
+- assertVisible: "Thar Roxx"

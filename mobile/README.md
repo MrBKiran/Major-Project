@@ -47,6 +47,31 @@ development build (`npx expo run:android`, which needs `ANDROID_HOME` pointing a
 **A phone on the network.** Start the backend on `0.0.0.0` and set
 `EXPO_PUBLIC_API_URL=http://<computer's IP>:8010`. Outside development it must be `https`.
 
+**A phone on a USB cable** (no network setup). Turn on USB debugging, then:
+
+```bash
+adb reverse tcp:8081 tcp:8081      # Metro
+adb reverse tcp:8010 tcp:8010      # the backend
+EXPO_PUBLIC_API_URL=http://localhost:8010 npx expo start --localhost --port 8081
+```
+
+The Play Store's Expo Go can trail the SDK this app is on (it offered SDK 57 when the app was on
+58), so a phone gets the development build instead: `npx expo prebuild --platform android`, then
+`cd android && ./gradlew app:assembleDebug` and `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+It installs as AutoSaarthi (`io.autosaarthi.owner`) and loads its code from Metro. `android/` is
+generated from `app.json` and is not committed.
+
+**Icons and splash** are rendered, not drawn: edit `design/brand/road.svg` and run
+`node design/brand/render.mjs` from the repository root. `src/test/brand.test.ts` checks the
+results against `app.json` and the tokens. Re-run `npx expo prebuild --platform android` after
+changing them, since `android/` holds its own copies.
+
+**On Windows** the build needs CMake 3.31 or newer: Reanimated's object paths pass 260
+characters, and the ninja bundled with the default CMake 3.22 fails on them even with long paths
+enabled; the ninja in 3.31 (1.12) does not. `plugins/with-windows-cmake.js` writes `sdk.dir` and
+`cmake.dir` (the newest CMake 3.31+ in the SDK) into `android/local.properties` at prebuild, and
+warns if there is none — install one with the SDK manager. Nothing in `android/` is edited by hand.
+
 ### Push notifications
 
 The app registers its Expo push token with the backend (`POST /api/me/devices`) after sign-in —
@@ -70,6 +95,16 @@ Screen tests render inside the real session provider and API client, with only t
 replaced by a fake server (`src/test/harness.tsx`), so they exercise the same sign-in, refresh and
 error handling the app runs. Fixtures follow the server's real responses — a fixture with a field
 the server never sends once let a test pass while the screen showed nothing.
+
+### End-to-end on a device (Maestro)
+
+`.maestro/` drives the development build on a phone or emulator: sign-in (a wrong password, then
+the right one), Home with an urgent alert and its evidence, and booking a slot then cancelling it,
+so the demo data ends as it began. They need the seeded demo data and the setup above.
+
+```bash
+maestro test .maestro            # or: maestro --device <adb serial> test .maestro
+```
 
 ## Layout
 

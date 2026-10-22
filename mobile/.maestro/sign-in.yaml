@@ -1,0 +1,22 @@
+# A wrong password is refused in words; the right one opens the owner's car.
+appId: io.autosaarthi.owner
+name: Sign in
+---
+- runFlow:
+    file: common/sign-in.yaml
+    env:
+      EMAIL: ramesh.pawar@example.in
+      PASSWORD: not-the-password
+- extendedWaitUntil:
+    visible:
+      text: ".*(password|Invalid|incorrect).*"
+    timeout: 15000
+- assertVisible: "Sign in"
+- runFlow:
+    file: common/sign-in.yaml
+    env:
+      EMAIL: ramesh.pawar@example.in
+- extendedWaitUntil:
+    visible: "Bolero"
+    timeout: 30000
+- assertVisible: "Everything reads normal"

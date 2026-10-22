@@ -1,0 +1,5 @@
+# Maestro end-to-end flows for the owner's phone app.
+# Run against a development build (io.autosaarthi.owner) with the backend and
+# Metro reachable from the device — see ../README.md, "End-to-end on a device".
+flows:
+  - "*.yaml"

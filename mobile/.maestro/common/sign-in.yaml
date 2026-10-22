@@ -1,0 +1,26 @@
+# Signs in with email and password from a clean install. EMAIL comes from the
+# calling flow; the password is the seeded demo password (backend/app/db/seed.py).
+appId: io.autosaarthi.owner
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Sign in"
+    timeout: 60000
+# The server offers a phone code too, and the screen opens on it.
+- runFlow:
+    when:
+      visible:
+        text: "Phone"
+    commands:
+      - tapOn: "Email"
+- tapOn:
+    id: "email"
+- inputText: ${EMAIL}
+- tapOn:
+    id: "password"
+- inputText: ${PASSWORD || "autosaarthi"}
+- hideKeyboard
+- tapOn:
+    text: "Sign in"
+    index: 1

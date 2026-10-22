@@ -1,0 +1,33 @@
+# Book the first open slot, see it confirmed, then cancel it — so the demo data
+# ends as it began (one cancelled row aside).
+appId: io.autosaarthi.owner
+name: Book a service, then cancel it
+---
+- runFlow:
+    file: common/sign-in.yaml
+    env:
+      EMAIL: aditi.nair@example.in
+- extendedWaitUntil:
+    visible: "Book a service"
+    timeout: 30000
+- tapOn: "Book a service"
+- extendedWaitUntil:
+    visible: "Open slots near you"
+    timeout: 15000
+# The first slot is chosen already; its button sits under the list.
+# (A day name, so the header "Book a service" is not matched.)
+- scrollUntilVisible:
+    element:
+      text: "Book (Mon|Tue|Wed|Thu|Fri|Sat|Sun) .*"
+    direction: DOWN
+- tapOn:
+    text: "Book (Mon|Tue|Wed|Thu|Fri|Sat|Sun) .*"
+- extendedWaitUntil:
+    visible: "Booked for .*"
+    timeout: 15000
+- tapOn: "Cancel this booking"
+- tapOn: "Yes, cancel it"
+- extendedWaitUntil:
+    visible: "Open slots near you"
+    timeout: 15000
+- assertNotVisible: "Booked for .*"
