@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Road ahead: an A drawn as a road narrowing to the horizon; the centre-line dashes are its crossbar. -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M262 820 L512 214 L762 820" stroke-width="104"/>
+  </g>
+  <g fill="currentColor">
+    <rect x="490" y="652" width="44" height="120" rx="22"/>
+    <rect x="496" y="500" width="32" height="88" rx="16"/>
+  </g>
+</svg>

@@ -4,7 +4,7 @@
  * neither said it was open nor closed on Escape or a click elsewhere.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./api.js", () => ({
@@ -44,6 +44,22 @@ describe("section navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: /service ops/i }));
     expect(onSelect).toHaveBeenCalledWith("service");
   });
+
+  it("moves the highlight with its tab when the header reflows", () => {
+    // It was measured only when the tab changed, so a resize left it behind.
+    let reflow;
+    vi.stubGlobal("ResizeObserver", class { constructor(cb) { reflow = cb; } observe() {} disconnect() {} });
+    try {
+      render(<SectionNav tabs={TABS} active="service" onSelect={() => {}} />);
+      const tab = screen.getByRole("button", { name: /service ops/i });
+      Object.defineProperty(tab, "offsetLeft", { configurable: true, value: 140 });
+      Object.defineProperty(tab, "offsetWidth", { configurable: true, value: 120 });
+      act(() => reflow([]));
+      expect(screen.getByRole("navigation").firstElementChild).toHaveStyle({ left: "140px", width: "120px" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("account menu", () => {
@@ -67,6 +83,14 @@ describe("account menu", () => {
     fireEvent.keyDown(logout, { key: "Escape" });
     expect(screen.queryByRole("button", { name: /log out/i })).not.toBeInTheDocument();
     expect(document.activeElement).toBe(trigger());
+  });
+
+  it("keeps its name for screen readers where the window is too narrow to show it", () => {
+    render(<AccountMenu onAccount={() => {}} />);
+    const words = screen.getByText("Platform Admin").parentElement;
+    expect(words.className).toMatch(/(^|\s)sr-only(\s|$)/);
+    expect(words.className).toMatch(/(^|\s)xl:not-sr-only(\s|$)/);
+    expect(trigger()).toHaveAccessibleName(/platform admin/i);
   });
 
   it("closes on a click elsewhere on the page", async () => {

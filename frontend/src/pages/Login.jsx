@@ -25,6 +25,7 @@ import GoogleButton from "../auth/GoogleButton.jsx";
 import EnrollFlow from "./login/EnrollFlow.jsx";
 import MfaStep from "./login/MfaStep.jsx";
 import PhoneSignIn from "./login/PhoneSignIn.jsx";
+import { BrandMark } from "../ui.jsx";
 import { ErrorNote, Field, inputCls, submitCls } from "./login/parts.jsx";
 
 const METHOD_LABELS = { password: "Email", phone_otp: "Phone" };
@@ -107,9 +108,7 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
       <div className="animate-in relative w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-title-sm font-bold text-accent-ink shadow-[0_0_0_1px_rgba(255,74,35,0.22)]">
-            A
-          </div>
+          <BrandMark className="mx-auto mb-3 h-11 w-11 rounded-xl" />
           <h1 className="text-title-sm font-semibold text-fg-strong">AutoSaarthi</h1>
           <p className="mt-1 text-body-sm text-fg-muted">{SUBTITLES[surface]}</p>
         </div>
@@ -171,7 +170,7 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
               {methods.includes("google") && config?.google_client_id && (
                 <>
-                  <div className="flex items-center gap-3 text-caption uppercase tracking-wider text-fg-subtle">
+                  <div className="flex items-center gap-3 text-label text-fg-subtle">
                     <span className="h-px flex-1 bg-border" />
                     or
                     <span className="h-px flex-1 bg-border" />
@@ -198,7 +197,7 @@ export default function Login({ defaultMethod = "password", surface = "console" 
                   className="animate-in w-full rounded-lg border border-border bg-surface-inset/60 px-4 py-3 text-left transition duration-150 hover:-translate-y-0.5 hover:border-accent/50 hover:bg-surface-inset active:translate-y-0 disabled:opacity-50"
                 >
                   <div className="text-body-sm font-medium text-fg-strong">{m.org_name}</div>
-                  <div className="mt-0.5 text-caption uppercase tracking-wider text-fg-muted">
+                  <div className="mt-0.5 text-label text-fg-muted">
                     {m.role.replace(/_/g, " ")}
                   </div>
                 </button>

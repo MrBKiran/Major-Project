@@ -19,7 +19,7 @@ async function signIn(page, email, path = "/") {
 }
 
 // Each bundled weight is its own file, fetched when first used — a weight that
-// only one glyph needs (the bold logo letter) could miss the screenshot.
+// only a few glyphs need (the bold wordmark) could miss the screenshot.
 async function fontsLoaded(page) {
   await page.evaluate(async () => {
     const faces = ["400", "500", "600", "700"].map((w) => `${w} 16px "Space Grotesk"`)
@@ -80,6 +80,27 @@ test("console: Security Console", async ({ page }) => {
     .map((label) => page.getByText(label).locator(".."));
   for (const counter of counters) await expect(counter).toHaveCount(1);
   await expect(page).toHaveScreenshot("security.png", { mask: counters });
+});
+
+test("console header: one line of tabs on a small laptop", async ({ page }) => {
+  // Below about 1300 px every tab label broke onto two lines.
+  await signIn(page, "admin@autosaarthi.io");
+  const nav = page.getByRole("navigation", { name: "Console sections" });
+  for (const width of [1024, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    const heights = await nav.getByRole("button").evaluateAll((tabs) => tabs.map((t) => t.getBoundingClientRect().height));
+    expect(Math.max(...heights), `tab height at ${width} px`).toBeLessThan(40);  // one line is 32, two were 51
+    expect(await nav.evaluate((n) => n.scrollWidth <= n.clientWidth), `every tab in view at ${width} px`).toBe(true);
+    await expect(page.getByRole("button", { name: /platform admin/i })).toBeVisible();
+  }
+  // Narrower still, the row scrolls rather than breaking a label.
+  await page.setViewportSize({ width: 900, height: 800 });
+  const narrow = await nav.getByRole("button").evaluateAll((tabs) => tabs.map((t) => t.getBoundingClientRect().height));
+  expect(Math.max(...narrow), "tab height at 900 px").toBeLessThan(40);
+  // Where there is room, the organisation and role show whole.
+  await page.setViewportSize({ width: 1440, height: 800 });
+  const org = page.getByText("AutoSaarthi Platform · platform admin");
+  expect(await org.evaluate((el) => el.scrollWidth <= el.clientWidth), "org line whole at 1440 px").toBe(true);
 });
 
 test("console: sign in", async ({ page }) => {

@@ -108,7 +108,7 @@ function Conversation({ vin }: { vin: string }) {
           ListHeaderComponent={
             <View style={{ gap: space[3] }}>
               {problem && <Notice>{problem}</Notice>}
-              {busy && <Meta>agent is thinking…</Meta>}
+              {busy && <Meta>Agent is thinking…</Meta>}
             </View>
           }
           ListFooterComponent={note ? <Txt tone="muted" style={{ textAlign: 'center', paddingVertical: space[5] }}>{note}</Txt> : undefined}

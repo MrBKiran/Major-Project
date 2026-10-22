@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Rendered from design/brand/road.svg by design/brand/render.mjs: edit those, not this. -->
+  <rect width="1024" height="1024" rx="236" fill="#ff4a23"/>
+  <g transform="translate(122.88 122.88) scale(0.76)">
+    <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M262 820 L512 214 L762 820" stroke-width="104"/>
+  </g>
+  <g fill="#ffffff">
+    <rect x="490" y="652" width="44" height="120" rx="22"/>
+    <rect x="496" y="500" width="32" height="88" rx="16"/>
+  </g>
+  </g>
+</svg>

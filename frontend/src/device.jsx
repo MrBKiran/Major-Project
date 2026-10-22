@@ -64,16 +64,17 @@ export function hatchStyle(night, size = 10) {
 export const MONO = font.mono;
 export const SANS = font.sans;
 
-/** Metadata voice: uppercase mono, letterspaced. Everything the owner is not
- *  meant to read closely — status, labels, provenance — wears this. */
-export function Meta({ children, night, style = {}, className = "" }) {
+/** Metadata voice: small, quiet, sentence case — status, labels, provenance.
+ *  `mono` is for data (a VIN, a reading, a reference), where the fixed width
+ *  helps; a label is never set in capitals to make it look like one. */
+export function Meta({ children, night, mono = false, style = {}, className = "" }) {
   const t = tokens(night);
   return (
     <span
       className={className}
       style={{
-        fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em",
-        textTransform: "uppercase", color: t.faint, ...style,
+        fontFamily: mono ? MONO : SANS, fontSize: 12, fontWeight: mono ? 400 : 500,
+        color: t.faint, ...style,
       }}
     >
       {children}
@@ -90,8 +91,8 @@ export function Pill({ children, night, tone = "p1" }) {
   return (
     <span
       style={{
-        fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
-        textTransform: "uppercase", background: bg, color: ink,
+        fontFamily: SANS, fontSize: 12, fontWeight: 600,
+        background: bg, color: ink,
         padding: "4px 9px", borderRadius: 6, whiteSpace: "nowrap",
       }}
     >
@@ -328,14 +329,14 @@ export function CarDock({ night, climate = "climate 22.0", media = "media strip"
       display: "flex", alignItems: "center", gap: 16, padding: "10px 20px",
       background: t.chrome, borderTop: `1px solid ${t.edge}`, flexShrink: 0,
     }}>
-      <Meta night={night} style={{ textTransform: "none", whiteSpace: "nowrap" }}>{climate}</Meta>
+      <Meta night={night} mono style={{ whiteSpace: "nowrap" }}>{climate}</Meta>
       <div style={{
         flex: 1, height: 34, borderRadius: 8, display: "grid", placeItems: "center",
         ...hatchStyle(night, 8), border: `1px dashed ${t.edge}`,
       }}>
-        <Meta night={night} style={{ textTransform: "none", fontSize: 11 }}>{media}</Meta>
+        <Meta night={night} mono style={{ fontSize: 11 }}>{media}</Meta>
       </div>
-      <Meta night={night} style={{ textTransform: "none", whiteSpace: "nowrap" }}>{right}</Meta>
+      <Meta night={night} mono style={{ whiteSpace: "nowrap" }}>{right}</Meta>
     </div>
   );
 }

@@ -62,6 +62,14 @@ describe("healthy card", () => {
   });
 });
 
+describe("while the car loads", () => {
+  it("says so to a screen reader, not only with grey blocks", async () => {
+    api.get.mockImplementation(() => new Promise(() => {}));   // nothing arrives
+    render(<OwnerApp standalone />);
+    expect(await screen.findByRole("status")).toHaveTextContent(/loading your car/i);
+  });
+});
+
 describe("signing out on the phone", () => {
   beforeEach(() => logout.mockClear());
 

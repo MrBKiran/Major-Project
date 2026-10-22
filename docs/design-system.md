@@ -31,6 +31,19 @@ the head unit, and (from Phase 4) the React Native app and its Android Auto scre
    shared by the phone, the web owner app and the head unit.
 8. **The phone spaces on the 4-point `space` scale** from the tokens; the web uses Tailwind's,
    which is the same step.
+9. **Labels speak in sentence case.** No all-caps, no letter-spacing. Monospace is for data a person
+   might copy (a VIN, a code, a slot id), never to make a label look technical.
+10. **One surface per idea.** A page's headline figures are one `StatStrip`, not a row of
+    separate cards; a card does not hold more cards — rows are divided by a line.
+11. **One mark, drawn once.** The AutoSaarthi mark is `design/brand/road.svg`: an A drawn as a
+    road narrowing to the horizon, its centre-line dashes the crossbar. Every icon — the phone's
+    app icon, Android adaptive and themed layers, both splash marks, the favicons — is rendered
+    from it by `node design/brand/render.mjs`, in token colours; nothing is drawn by hand. White
+    on the plain accent is 3.4:1: enough for the mark (a graphic, 3:1), never for text.
+12. **A header holds still.** Tab labels never break; below `xl` the console drops the
+    "OEM Console" caption and shows the account menu as its avatar (its words stay for a screen
+    reader), and below that the tab row scrolls. Anything that changes width as it runs — the
+    head unit's clock — reserves its widest width, so nothing beside it moves.
 
 ## Tokens
 
@@ -63,6 +76,9 @@ These are not conventions; a test fails when they are broken.
 | Every input, select and textarea is outlined at 3:1 | `frontend/src/test/control-outline.test.js` |
 | `borderStrong` clears 3:1 on every surface, both modes; spacing is a 4-point scale | `packages/tokens/src/tokens.test.js` |
 | Owner wording: no staff codes, confidence in words, no trend the readings do not show | `packages/core/src/owner.test.js` |
+| No all-caps label (`uppercase` class or `textTransform`) on the web or the phone | `frontend/src/test/label-voice.test.js`, `mobile/src/test/label-voice.test.ts` |
+| Icons, splash and favicons exist at the sizes asked for, in token colours, at 3:1+ | `mobile/src/test/brand.test.ts`, `frontend/src/test/brand.test.js` |
+| The console's tabs stay one line at 1024 and 1280 px, and every tab is in view | `frontend/e2e/baseline.spec.js` |
 | Every screen matches the reviewed screenshots | `frontend/e2e/baseline.spec.js` |
 
 ## Night mode
@@ -80,7 +96,14 @@ the phone stay light.
   `<body>` (inside a page, the entrance animation's stacking context put it under the header).
 * **`SectionNav`** / **`AccountMenu`** (`App.jsx`) — `aria-current="page"` on the current section;
   the account menu is a disclosure (`aria-expanded`, `aria-controls`, Escape, click outside).
-* Keyboard focus: one global `:focus-visible` ring in `accentDeep` (4.2:1 on the page).
+* **`StatStrip`** (`ui.jsx`) — a page's headline figures: one `<dl>`, figures divided by a line,
+  two columns on a phone. `bare` drops the frame for figures inside a card.
+* **`BrandMark`** (`ui.jsx`) — the mark on its accent tile, beside the wordmark in the console
+  header and on both sign-in pages; `aria-hidden`, since the wordmark already names the product.
+* The **`SectionNav`** highlight is re-measured whenever the row reflows (`ResizeObserver`): it was
+  measured once, before the web font loaded, and sat 5 px short of its tab in every screenshot.
+* Keyboard focus: one global `:focus-visible` ring in `accentDeep` (4.2:1 on the page). A box that
+  scrolls (the tab row) keeps 4 px of padding so the ring is not clipped.
 
 ## What Phase 2 changed, reviewed screen by screen
 

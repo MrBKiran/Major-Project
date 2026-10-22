@@ -12,7 +12,8 @@
     },
     "allowJs": true,
     "types": [
-      "jest"
+      "jest",
+      "node"
     ]
   },
   "include": [

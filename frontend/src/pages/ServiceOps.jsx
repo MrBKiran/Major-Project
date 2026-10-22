@@ -15,7 +15,7 @@ import {
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { formatDate, formatDay, formatSlot, humanize, pluralize } from "@autosaarthi/core";
-import { Badge, Card, CHART, Empty, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
+import { Badge, Card, CHART, Empty, Skeleton, SkeletonStatRow, StatStrip } from "../ui.jsx";
 
 export default function ServiceOps() {
   const { can } = useAuth();
@@ -88,16 +88,13 @@ function DemandForecast() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat value={centers.length} label="centres forecast" sub={`${forecast.horizon_days}-day horizon`} />
-        <Stat
-          value={forecast.overloaded_center_days}
-          label="overloaded centre-days"
-          tone={forecast.overloaded_center_days ? "danger" : "good"}
-        />
-        <Stat value={`${(fleetUtil * 100).toFixed(0)}%`} label="mean utilisation" tone="warn" />
-        <Stat value={forecast.redistribution.length} label="redistribution suggestions" tone="accent" />
-      </div>
+      <StatStrip items={[
+        { value: centers.length, label: "Centres forecast", sub: `${forecast.horizon_days}-day horizon` },
+        { value: forecast.overloaded_center_days, label: "Overloaded centre-days",
+          tone: forecast.overloaded_center_days ? "danger" : "good" },
+        { value: `${(fleetUtil * 100).toFixed(0)}%`, label: "Mean utilisation", tone: "warn" },
+        { value: forecast.redistribution.length, label: "Redistribution suggestions" },
+      ]} />
 
       <Card title="Centres" subtitle="Sorted by mean utilisation over the horizon — click one to inspect">
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
@@ -166,7 +163,7 @@ function DemandForecast() {
         <Card title="Redistribution suggestions" subtitle="Same-city centres with spare capacity on an overloaded day">
           <table className="w-full text-body-sm">
             <thead>
-              <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
+              <tr className="border-b border-border text-left text-label text-fg-muted">
                 <th className="pb-2 font-medium">Date</th>
                 <th className="pb-2 font-medium">Overloaded centre</th>
                 <th className="pb-2 text-right font-medium">Overflow</th>
@@ -212,7 +209,7 @@ function Appointments() {
       ) : (
         <table className="w-full text-body-sm">
           <thead>
-            <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
+            <tr className="border-b border-border text-left text-label text-fg-muted">
               <th className="pb-2 font-medium">Vehicle</th>
               <th className="pb-2 font-medium">Centre</th>
               <th className="pb-2 font-medium">Slot</th>

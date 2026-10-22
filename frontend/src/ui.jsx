@@ -44,6 +44,25 @@ export const CHART = {
   },
 };
 
+/**
+ * The AutoSaarthi mark: an A drawn as a road narrowing to the horizon
+ * (design/brand/road.svg — the app icons are rendered from the same drawing).
+ * Always beside the wordmark, so it is decoration to a screen reader. White on
+ * the plain accent is 3.4:1: enough for a graphic (3:1), never for text.
+ */
+export function BrandMark({ className = "h-7 w-7 rounded-lg" }) {
+  return (
+    <span className={`grid shrink-0 place-items-center bg-accent text-white ${className}`}>
+      <svg viewBox="0 0 1024 1024" className="h-[76%] w-[76%]" aria-hidden="true" focusable="false">
+        <path d="M262 820 L512 214 L762 820" fill="none" stroke="currentColor" strokeWidth="104"
+              strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="490" y="652" width="44" height="120" rx="22" fill="currentColor" />
+        <rect x="496" y="500" width="32" height="88" rx="16" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
 export function Card({ title, subtitle, right, children, className = "", interactive = false }) {
   return (
     <section
@@ -55,7 +74,7 @@ export function Card({ title, subtitle, right, children, className = "", interac
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
           <div>
             {title && (
-              <h2 className="text-body-sm font-semibold uppercase tracking-[0.08em] text-fg-secondary">
+              <h2 className="text-body font-semibold text-fg-strong">
                 {title}
               </h2>
             )}
@@ -101,25 +120,37 @@ function useCountUp(value, duration = 700) {
 }
 
 /** One number, one label. The unit of a slide claim. */
-export function Stat({ value, label, sub, tone = "default", wide = false }) {
-  const tones = {
-    default: "text-fg-strong",
-    danger: "text-p1",
-    warn: "text-p2",
-    good: "text-ok",
-    accent: "text-accent-ink",
-  };
+const TONES = {
+  default: "text-fg-strong",
+  danger: "text-p1",
+  warn: "text-p2",
+  good: "text-ok",
+  accent: "text-accent-ink",
+};
+
+function StatItem({ value, label, sub, tone = "default", bare }) {
   const shown = useCountUp(value);
   return (
-    <div className={`group rounded-lg border border-border bg-surface-inset/60 px-4 py-3.5 transition-colors duration-200 hover:border-fg-subtle ${wide ? "col-span-2" : ""}`}>
-      <div className={`num text-display font-semibold leading-none ${tones[tone]}`}>
+    <div className={`min-w-0 flex-1 ${bare ? "py-1 pr-5 md:not-first:pl-5" : "px-5 py-3.5"}`}>
+      <dt className="text-label text-fg-muted">{label}</dt>
+      <dd className={`num mt-1 text-title font-semibold leading-none ${TONES[tone]}`}>
         {shown}
-      </div>
-      <div className="mt-1.5 text-caption font-medium uppercase tracking-wider text-fg-tertiary">
-        {label}
-      </div>
-      {sub && <div className="mt-1 text-caption text-fg-muted">{sub}</div>}
+        {sub && <span className="mt-1.5 block text-caption font-normal text-fg-muted">{sub}</span>}
+      </dd>
     </div>
+  );
+}
+
+/** A page's headline figures as one strip — label above figure — instead of a
+ * row of separate big-number tiles. `bare` drops the frame, for figures that
+ * sit inside a card (a card of tiles inside a card was the old pattern). */
+export function StatStrip({ items, bare = false }) {
+  return (
+    <dl className={`grid grid-cols-2 md:flex md:divide-x md:divide-border ${
+      bare ? "gap-y-3" : "rounded-xl border border-border bg-surface-card"
+    }`}>
+      {items.map((item) => <StatItem key={item.label} {...item} bare={bare} />)}
+    </dl>
   );
 }
 
@@ -177,11 +208,11 @@ export function Skeleton({ className = "" }) {
 
 export function SkeletonStatRow({ count = 4 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-2 rounded-xl border border-border bg-surface-card md:flex md:divide-x md:divide-border">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="rounded-lg border border-border bg-surface-inset/60 px-4 py-3.5">
-          <Skeleton className="h-6 w-14" />
-          <Skeleton className="mt-2.5 h-2.5 w-20" />
+        <div key={i} className="flex-1 px-5 py-3.5">
+          <Skeleton className="h-2.5 w-20" />
+          <Skeleton className="mt-2.5 h-5 w-12" />
         </div>
       ))}
     </div>

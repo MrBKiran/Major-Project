@@ -15,7 +15,7 @@ export const ghostCls =
 export function Field({ label, hint, children }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-caption font-medium uppercase tracking-wider text-fg-muted">
+      <span className="mb-1.5 block text-label font-medium text-fg-muted">
         {label}
       </span>
       {children}

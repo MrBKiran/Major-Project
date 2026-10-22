@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { Badge, Card, Dialog, Empty, Skeleton, SkeletonStatRow, Stat, inr } from "../ui.jsx";
+import { Badge, Card, Dialog, Empty, Skeleton, SkeletonStatRow, StatStrip, inr } from "../ui.jsx";
 
 /** Downloads the drafted CAPA as a PDF.
  *
@@ -87,7 +87,7 @@ export default function PlantDashboard() {
         >
           <table className="w-full text-body-sm">
             <thead>
-              <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
+              <tr className="border-b border-border text-left text-label text-fg-muted">
                 <th className="pb-2 font-medium">Cluster</th>
                 <th className="pb-2 text-right font-medium">Rate</th>
                 <th className="pb-2 text-right font-medium">Lift</th>
@@ -183,33 +183,16 @@ function CapaDraft() {
           <span className="text-body text-fg-muted">{c.cluster_key}</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Stat
-            value={`${c.failures}/${c.cohort_size}`}
-            label="units affected"
-            sub="in this batch"
-            tone="danger"
-          />
-          <Stat
-            value={`${(c.failure_rate * 100).toFixed(1)}%`}
-            label="batch failure rate"
-            sub={`fleet baseline ${(c.baseline_rate * 100).toFixed(1)}%`}
-            tone="warn"
-          />
-          <Stat value={`${c.lift}×`} label="lift vs baseline" tone="danger" />
-          <Stat
-            value={c.q_value < 0.001 ? "<0.001" : c.q_value.toFixed(3)}
-            label="FDR q-value"
-            sub={`raw p=${c.p_value}`}
-            tone="good"
-          />
-          <Stat
-            value={inr(d.projected_savings_inr)}
-            label="warranty cost avoided"
-            sub={`${d.units_at_risk} units still at risk`}
-            tone="good"
-          />
-        </div>
+        <StatStrip bare items={[
+          { value: `${c.failures}/${c.cohort_size}`, label: "Units affected", sub: "in this batch", tone: "danger" },
+          { value: `${(c.failure_rate * 100).toFixed(1)}%`, label: "Batch failure rate",
+            sub: `fleet baseline ${(c.baseline_rate * 100).toFixed(1)}%`, tone: "warn" },
+          { value: `${c.lift}×`, label: "Lift vs baseline", tone: "danger" },
+          { value: c.q_value < 0.001 ? "<0.001" : c.q_value.toFixed(3), label: "FDR q-value",
+            sub: `raw p=${c.p_value}`, tone: "good" },
+          { value: inr(d.projected_savings_inr), label: "Warranty cost avoided",
+            sub: `${d.units_at_risk} units still at risk`, tone: "good" },
+        ]} />
 
         <p className="mt-4 rounded-lg border border-ok/25 bg-ok/5 px-4 py-2.5 text-body-sm text-fg-secondary">
           <span className="font-semibold text-ok">Corrected for multiple comparisons.</span>{" "}
@@ -351,7 +334,7 @@ function CapaModal({ capaId, onClose }) {
               <Field label="Root cause">{doc.root_cause}</Field>
               {doc.five_why?.length > 0 && (
                 <div>
-                  <dt className="text-caption font-medium uppercase tracking-wider text-fg-muted">5-Why</dt>
+                  <dt className="text-label font-medium text-fg-muted">5-Why</dt>
                   <ol className="mt-1.5 space-y-1.5">
                     {doc.five_why.map((w, i) => (
                       <li key={i} className="flex gap-2 text-label text-fg-tertiary">
@@ -374,7 +357,7 @@ function CapaModal({ capaId, onClose }) {
 function Field({ label, children, mono }) {
   return (
     <div>
-      <dt className="text-caption font-medium uppercase tracking-wider text-fg-muted">{label}</dt>
+      <dt className="text-label font-medium text-fg-muted">{label}</dt>
       <dd className={`mt-0.5 text-fg-secondary ${mono ? "font-mono text-label" : ""}`}>{children}</dd>
     </div>
   );

@@ -205,7 +205,7 @@ export default function InCarConsole() {
         </button>
 
         <span className="ml-auto text-caption text-fg-muted" role="status">
-          {controlError || (carScreen ? "drawn from the server's car screen" : "asking the server…")}
+          {controlError || (carScreen ? "Drawn from the server's car screen" : "Asking the server…")}
         </span>
       </div>
 
@@ -216,7 +216,10 @@ export default function InCarConsole() {
             night={night}
             left={
               <>
-                <span data-testid="head-unit-clock" style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
+                {/* Five characters reserved ("10:00"), so the gear letter and the
+                    VIN line hold still when the hour gains a digit. */}
+                <span data-testid="head-unit-clock"
+                      style={{ fontFamily: MONO, fontSize: 13, color: t.ink, display: "inline-block", minWidth: "5ch" }}>
                   {clock}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: 12, color: t.dim }}>
@@ -272,7 +275,7 @@ export function Verdict({ screen: s }) {
   ];
   return (
     <div className="rounded-xl border border-border bg-surface-card/60 px-4 py-3">
-      <div className="mb-2 text-caption font-medium uppercase tracking-wider text-fg-muted">
+      <div className="mb-2 text-label font-medium text-fg-muted">
         What the server decided
       </div>
       <div className="space-y-1.5">
@@ -352,7 +355,7 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
               ? `${sentenceCase(componentLabel(alert.component))} service booked for ${formatSlot(booking.slot_start)}.`
               : `${sentenceCase(componentLabel(alert.component))} service needed${days != null ? ` ${serviceDue(days)}` : ""}. I'll call you about it.`}
           </span>
-          <Meta night={night}>voice · hands-free</Meta>
+          <Meta night={night}>Voice · hands-free</Meta>
         </div>
 
         <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -378,7 +381,7 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
             <Meta night={night} style={{
               background: t.control, padding: "5px 10px", borderRadius: 6,
             }}>
-              {s.drive.basis === "telemetry" ? "disabled · in motion" : "disabled · no fresh reading"}
+              {s.drive.basis === "telemetry" ? "Disabled · in motion" : "Disabled · no fresh reading"}
             </Meta>
           </div>
         </div>
@@ -399,7 +402,7 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Pill night={night}>{severityWord(alert.severity)}</Pill>
-            <Meta night={night}>brief stop</Meta>
+            <Meta night={night}>Brief stop</Meta>
           </div>
           <div style={{ marginTop: 18 }}>
             {/* "Brake pads need" but "Water pump needs" — the first line read. */}
@@ -434,7 +437,7 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <Pill night={night}>{alertBadge(alert)}</Pill>
-          <Meta night={night}>service agent</Meta>
+          <Meta night={night}>Service agent</Meta>
         </div>
 
         <div style={{ marginTop: 18 }}>
@@ -475,7 +478,7 @@ export function ConsoleBody({ night, screen: s, error, slot, onBook, onOtherTime
               night={night}
               disabled={!touch || !slot || pending}
               onClick={() => onBook(slot)}
-              note={touch ? null : `blocked · ${basisText(s.drive)}`}
+              note={touch ? null : `Blocked · ${basisText(s.drive)}`}
             >
               {pending ? "Booking…" : slot ? `Book ${formatSlot(slot.slot_start)}` : "Book service"}
             </PrimaryButton>

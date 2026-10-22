@@ -19,6 +19,7 @@ import InCarConsole from "./pages/InCarConsole.jsx";
 import OwnerApp from "./pages/OwnerApp.jsx";
 import Account from "./pages/Account.jsx";
 import MobileApp from "./MobileApp.jsx";
+import { BrandMark } from "./ui.jsx";
 
 const ICONS = {
   fleet: (
@@ -115,12 +116,10 @@ function Shell() {
       <header className="sticky top-0 z-10 border-b border-border bg-surface-page/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-6 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/15 text-body-sm font-bold text-accent-ink">
-              A
-            </div>
+            <BrandMark />
             <div className="flex items-baseline gap-2">
               <span className="text-lead font-bold tracking-tight text-fg-strong">AutoSaarthi</span>
-              <span className="text-caption text-fg-muted">OEM Console</span>
+              <span className="hidden text-caption text-fg-muted xl:inline">OEM Console</span>
             </div>
           </div>
 
@@ -155,17 +154,30 @@ function Shell() {
 /** The console's sections. The current one is marked with aria-current, not
  *  only by colour — colour alone tells a screen-reader user nothing. */
 export function SectionNav({ tabs, active, onSelect }) {
+  const navRef = useRef(null);
   const btnRefs = useRef({});
   const [indicator, setIndicator] = useState(null);
 
   useLayoutEffect(() => {
-    const el = btnRefs.current[active];
-    if (!el) return setIndicator(null);
-    setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+    const measure = () => {
+      const el = btnRefs.current[active];
+      setIndicator(el ? { left: el.offsetLeft, width: el.offsetWidth } : null);
+    };
+    measure();
+    // The header reflows at its breakpoints, on resize and when the web font
+    // lands; a highlight measured once was left behind its tab.
+    if (typeof ResizeObserver === "undefined" || !navRef.current) return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(navRef.current);
+    Object.values(btnRefs.current).forEach((b) => b && observer.observe(b));
+    return () => observer.disconnect();
   }, [active, tabs.length]);
 
   return (
-    <nav aria-label="Console sections" className="relative flex flex-1 gap-1">
+    // One line of tabs; where even that will not fit, the row scrolls instead of
+    // breaking labels. Its 4 px padding (cancelled by the margin) is room for
+    // the focus ring, which a scrolling box would otherwise clip.
+    <nav ref={navRef} aria-label="Console sections" className="relative -m-1 flex min-w-0 flex-1 gap-1 overflow-x-auto p-1">
       {tabs.length === 0 ? (
         <span className="px-3 py-1.5 text-body-sm text-fg-subtle">
           Your role has no console pages assigned.
@@ -175,7 +187,7 @@ export function SectionNav({ tabs, active, onSelect }) {
           {indicator && (
             <span
               aria-hidden
-              className="absolute top-0 h-full rounded-lg bg-surface-inset transition-[left,width] duration-300 ease-out"
+              className="absolute inset-y-1 rounded-lg bg-surface-inset transition-[left,width] duration-300 ease-out"
               style={{ left: indicator.left, width: indicator.width }}
             />
           )}
@@ -186,7 +198,7 @@ export function SectionNav({ tabs, active, onSelect }) {
               ref={(el) => { btnRefs.current[t.id] = el; }}
               onClick={() => onSelect(t.id)}
               aria-current={active === t.id ? "page" : undefined}
-              className={`relative z-[1] flex items-center gap-2 rounded-lg px-3 py-1.5 text-body-sm font-medium transition-colors duration-200 ${
+              className={`relative z-[1] flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-body-sm font-medium transition-colors duration-200 ${
                 active === t.id ? "text-fg-strong" : "text-fg-muted hover:text-fg-secondary"
               }`}
             >
@@ -253,7 +265,7 @@ export function AccountMenu({ onAccount }) {
         onClick={toggle}
         aria-expanded={open}
         aria-controls={menuId}
-        className={`flex items-center gap-2.5 rounded-lg border px-3 py-1.5 text-left transition-colors duration-200 ${
+        className={`flex max-w-56 items-center gap-2.5 rounded-lg border px-3 py-1.5 text-left transition-colors duration-200 min-[1366px]:max-w-72 ${
           open ? "border-fg-muted bg-surface-inset" : "border-border bg-surface-card hover:border-fg-subtle"
         }`}
       >
@@ -262,8 +274,12 @@ export function AccountMenu({ onAccount }) {
         </div>
         {/* min-w-0 + truncate: the org/role line is user data of unbounded
             length, and without a bound it pushed the caret out of the header
-            and clipped mid-word ("vehicle owne") instead of eliding. */}
-        <div className="min-w-0 leading-tight">
+            and clipped mid-word ("vehicle owne") instead of eliding. Below xl
+            only the avatar shows, to leave the tabs one line; the words stay
+            for a screen reader, as the button's name. The button is capped
+            (14rem, 18rem from 1366 px) so a long organisation elides rather
+            than pushing the tabs into a scroll. */}
+        <div className="sr-only min-w-0 leading-tight xl:not-sr-only">
           <div className="truncate text-label font-medium text-fg">{principal.full_name}</div>
           <div className="truncate text-caption text-fg-muted">
             {principal.org.name} · {principal.role.replace(/_/g, " ")}
@@ -284,7 +300,7 @@ export function AccountMenu({ onAccount }) {
             </div>
           ) : (
             <>
-              <div className="px-3 pb-1.5 pt-1 text-caption font-medium uppercase tracking-wider text-fg-muted">
+              <div className="px-3 pb-1.5 pt-1 text-label font-medium text-fg-muted">
                 Switch role
               </div>
               {memberships.map((m) => (

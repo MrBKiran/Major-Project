@@ -14,7 +14,7 @@ import {
 import { api, ApiError } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { featureLabel, formatDate, pluralize } from "@autosaarthi/core";
-import { Badge, Card, CHART, Dialog, Empty, SeverityPill, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
+import { Badge, Card, CHART, Dialog, Empty, SeverityPill, Skeleton, SkeletonStatRow, StatStrip } from "../ui.jsx";
 
 export default function FleetMonitoring() {
   const { can } = useAuth();
@@ -60,16 +60,12 @@ export default function FleetMonitoring() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat value={page.total ?? vehicles.length} label="vehicles in scope" sub={scope.org} />
-        <Stat value={page_counts.p1} label="P1 — urgent" tone="danger" />
-        <Stat
-          value={page_counts.at_risk - page_counts.p1}
-          label="P2 / P3 — watch"
-          tone="warn"
-        />
-        <Stat value={page_counts.healthy} label="healthy" tone="good" />
-      </div>
+      <StatStrip items={[
+        { value: page.total ?? vehicles.length, label: "Vehicles in scope", sub: scope.org },
+        { value: page_counts.p1, label: "P1, urgent", tone: "danger" },
+        { value: page_counts.at_risk - page_counts.p1, label: "P2–P3, to watch", tone: "warn" },
+        { value: page_counts.healthy, label: "Healthy", tone: "good" },
+      ]} />
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1.4fr]">
         <Card
@@ -83,7 +79,7 @@ export default function FleetMonitoring() {
           <div role="region" aria-label="Fleet list" tabIndex={0} className="-mx-5 max-h-[612px] overflow-y-auto">
             <table className="w-full text-body-sm">
               <thead className="sticky top-0 bg-surface-card">
-                <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
+                <tr className="border-b border-border text-left text-label text-fg-muted">
                   <th className="px-5 pb-2 font-medium">Vehicle</th>
                   <th className="pb-2 font-medium">Issue</th>
                   <th className="pb-2 pr-5 text-right font-medium">Severity</th>
@@ -183,7 +179,7 @@ function ModelPerformance() {
             </h3>
             <table className="mt-2.5 w-full text-label">
               <thead>
-                <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
+                <tr className="border-b border-border text-left text-label text-fg-muted">
                   <th className="pb-1.5 font-medium">Model</th>
                   <th className="pb-1.5 text-right font-medium">Accuracy</th>
                   <th className="pb-1.5 text-right font-medium">F1 (macro)</th>
@@ -213,9 +209,11 @@ function ModelPerformance() {
         {m2 && (
           <div>
             <h3 className="text-label font-semibold text-fg-secondary">M2 — component &amp; time-to-failure</h3>
-            <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <Stat value={`${(m2.component_classifier.accuracy * 100).toFixed(1)}%`} label="component accuracy" />
-              <Stat value={`±${m2.progress_regressor.mae_days_equivalent.toFixed(1)}d`} label="days-to-failure MAE" />
+            <div className="mt-2.5">
+              <StatStrip bare items={[
+                { value: `${(m2.component_classifier.accuracy * 100).toFixed(1)}%`, label: "Component accuracy" },
+                { value: `±${m2.progress_regressor.mae_days_equivalent.toFixed(1)}d`, label: "Days-to-failure error (MAE)" },
+              ]} />
             </div>
             <p className="mt-2.5 text-caption leading-relaxed text-fg-muted">
               Severity rule: <code className="rounded bg-surface-inset/60 px-1 py-0.5 text-fg-tertiary">{m2.severity_rule}</code>
@@ -312,11 +310,11 @@ function VehicleDetail({ vin, canTrigger }) {
           </div>
         }
       >
-        <div className="grid grid-cols-3 gap-3">
-          <Stat value={vehicle.odometer?.toLocaleString("en-IN") ?? "—"} label="odometer (km)" />
-          <Stat value={vehicle.city} label="city" />
-          <Stat value={dtc_codes.length} label="active DTCs" tone={dtc_codes.length ? "warn" : "good"} />
-        </div>
+        <StatStrip bare items={[
+          { value: vehicle.odometer != null ? `${vehicle.odometer.toLocaleString("en-IN")} km` : "—", label: "Odometer" },
+          { value: vehicle.city, label: "City" },
+          { value: dtc_codes.length, label: "Active trouble codes", tone: dtc_codes.length ? "warn" : "good" },
+        ]} />
 
         {runResult && (
           <div className="mt-4 rounded-lg border border-border bg-surface-inset/40 px-4 py-3 text-label">
@@ -564,7 +562,7 @@ function ChatModal({ vin, onClose }) {
                 }`}
               >
                 {(m.strategy || m.source || m.agent) && (
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5 font-mono text-caption uppercase tracking-wider">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5 font-mono text-caption">
                     {m.agent && AGENT_LABELS[m.agent] && (
                       <span className="rounded bg-surface-inset-strong/70 px-1 py-px text-fg-tertiary" title={m.agent}>
                         {AGENT_LABELS[m.agent]}
@@ -598,7 +596,7 @@ function ChatModal({ vin, onClose }) {
                   </div>
                 )}
                 {m.role === "user" && m.intent && (
-                  <div className="mb-1 text-right font-mono text-caption uppercase tracking-wider text-white/60"
+                  <div className="mb-1 text-right font-mono text-caption text-white/60"
                        title={`Routed by ${m.intentSource === "llm" ? "the live intent classifier" : "the deterministic fallback"}`}>
                     {m.intent}{m.intentSource === "llm" ? "" : " · fallback"}
                   </div>

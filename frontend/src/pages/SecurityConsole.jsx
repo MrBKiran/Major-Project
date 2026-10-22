@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { api, getToken } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { pluralize } from "@autosaarthi/core";
-import { Badge, Card, Empty, Skeleton, SkeletonStatRow, Stat } from "../ui.jsx";
+import { Badge, Card, Empty, Skeleton, SkeletonStatRow, StatStrip } from "../ui.jsx";
 
 const DECISION_TONE = { BLOCK: "danger", FLAG: "warn", ALLOW: "good", INVALID: "slate" };
 
@@ -84,64 +84,65 @@ export default function SecurityConsole() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat value={stats.total} label="audited calls" />
-        <Stat value={stats.blocked} label="blocked" tone="danger" />
-        <Stat value={stats.flagged} label="flagged" tone="warn" />
-        <Stat value={agents.filter(([, a]) => a.quarantined).length} label="quarantined agents" tone="danger" />
-        <div className="rounded-lg border border-border bg-surface-inset/60 px-4 py-3.5">
+      <div className="flex flex-col gap-3 md:flex-row">
+        <div className="min-w-0 flex-1">
+          <StatStrip items={[
+            { value: stats.total, label: "Audited calls" },
+            { value: stats.blocked, label: "Blocked", tone: "danger" },
+            { value: stats.flagged, label: "Flagged", tone: "warn" },
+            { value: agents.filter(([, a]) => a.quarantined).length, label: "Quarantined agents", tone: "danger" },
+          ]} />
+        </div>
+        <div className="rounded-xl border border-border bg-surface-card px-5 py-3.5 md:w-56">
           <div className="flex items-center gap-1.5">
             <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-ok" : "bg-fg-subtle"}`} />
-            <span className="text-caption font-medium uppercase tracking-wider text-fg-tertiary">
-              {connected ? "live" : "disconnected"}
+            <span className="text-label font-medium text-fg-tertiary">
+              {connected ? "Live" : "Disconnected"}
             </span>
           </div>
           <button
             onClick={verifyChain}
             className="num mt-1 text-body-sm font-semibold text-accent-ink hover:underline"
           >
-            Verify audit chain →
+            Verify audit chain
           </button>
           {chain && chain !== "checking" && (
             <div className={`mt-1 text-caption ${chain.valid ? "text-ok" : "text-p1"}`}>
-              {chain.valid ? `intact — ${chain.rows} rows` : `BROKEN at row ${chain.broken_at}`}
+              {chain.valid ? `Intact: ${chain.rows} rows` : `Broken at row ${chain.broken_at}`}
             </div>
           )}
         </div>
       </div>
 
       <Card title="Agent × Tool policy matrix" subtitle="What each worker agent may call, enforced on every invocation">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <ul className="-mx-5 -my-5 divide-y divide-border">
           {agents.map(([id, a]) => (
-            <div
+            <li
               key={id}
-              className={`rounded-lg border p-3.5 transition-colors duration-300 ${
-                a.quarantined ? "border-p1/50 bg-p1/5" : "border-border bg-surface-inset/40 hover:border-fg-subtle"
+              className={`flex flex-wrap items-center gap-x-5 gap-y-1.5 px-5 py-3 transition-colors duration-300 ${
+                a.quarantined ? "bg-p1/5" : ""
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.color }} />
-                  <span className="text-body-sm font-semibold text-fg">{a.display_name}</span>
-                </div>
+              <div className="flex min-w-[16rem] flex-1 items-center gap-2">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: a.color }} />
+                <span className="text-body-sm font-semibold text-fg">{a.display_name}</span>
+                {a.quarantined && <Badge tone="danger" pulse>Quarantined</Badge>}
+                {a.quarantined && can("ueba:release") && (
+                  <button onClick={() => release(id)} className="text-label font-medium text-accent-ink transition hover:underline">
+                    Release
+                  </button>
+                )}
+              </div>
+              <PolicyCounts agent={a} />
+              {/* A fixed slot, so the counts line up whatever the badge says. */}
+              <span className="flex w-20 justify-end">
                 <Badge tone={a.clearance === "restricted" ? "danger" : a.clearance === "pii" ? "warn" : "slate"}>
                   {a.clearance}
                 </Badge>
-              </div>
-              {a.quarantined && (
-                <div className="mt-2 flex items-center justify-between rounded-md border border-p1/40 bg-p1/10 px-2.5 py-1.5">
-                  <Badge tone="danger" pulse>QUARANTINED</Badge>
-                  {can("ueba:release") && (
-                    <button onClick={() => release(id)} className="text-caption font-medium text-accent-ink transition hover:underline">
-                      Release
-                    </button>
-                  )}
-                </div>
-              )}
-              <PolicyCounts agent={a} />
-            </div>
+              </span>
+            </li>
           ))}
-        </div>
+        </ul>
       </Card>
 
       {can("redteam:run") && <RedTeam onDone={load} />}
@@ -175,7 +176,7 @@ export default function SecurityConsole() {
 export function PolicyCounts({ agent }) {
   const limits = Object.keys(agent.rate_limits).length;
   return (
-    <div className="mt-2.5 text-caption text-fg-muted">
+    <div className="text-caption text-fg-muted">
       <span className="text-ok">{agent.allow.length} allowed</span>
       {agent.deny.length > 0 && <span className="ml-2 text-p1">{agent.deny.length} explicit deny</span>}
       {limits > 0 && <span className="ml-2 text-fg-muted">{pluralize(limits, "rate limit")}</span>}
@@ -189,7 +190,7 @@ function EventTable({ rows }) {
     <div className="max-h-[420px] overflow-y-auto">
       <table className="w-full text-label">
         <thead className="sticky top-0 bg-surface-card">
-          <tr className="border-b border-border text-left text-caption uppercase tracking-wider text-fg-muted">
+          <tr className="border-b border-border text-left text-label text-fg-muted">
             <th className="pb-2 font-medium">Agent</th>
             <th className="pb-2 font-medium">Tool</th>
             <th className="pb-2 font-medium">Decision</th>
@@ -259,15 +260,15 @@ function RedTeam({ onDone }) {
       {!scenarios ? (
         <Empty>Loading scenarios…</Empty>
       ) : (
-        <div className="space-y-2.5">
+        <ul className="-mx-5 -my-5 divide-y divide-border">
           {scenarios.map((s) => {
             const res = results[s.id];
             return (
-              <div key={s.id} className="rounded-lg border border-border bg-surface-inset/40 p-3.5">
+              <li key={s.id} className="px-5 py-3.5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="text-body-sm font-semibold text-fg">
-                      {s.id} — {s.title}
+                      <span className="mr-2 font-mono text-label font-normal text-fg-muted">{s.id}</span>{s.title}
                     </div>
                     <p className="mt-1 text-label leading-relaxed text-fg-muted">{s.narrative}</p>
                   </div>
@@ -291,10 +292,10 @@ function RedTeam({ onDone }) {
                       <>
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge tone={res.passed ? "good" : "danger"}>
-                            {res.passed ? "CAUGHT as expected" : "did not match expected outcome"}
+                            {res.passed ? "Caught, as expected" : "Did not match the expected outcome"}
                           </Badge>
                           <Badge tone={DECISION_TONE[res.final_decision] ?? "slate"}>{res.final_decision}</Badge>
-                          {res.quarantined && <Badge tone="danger" pulse>agent quarantined</Badge>}
+                          {res.quarantined && <Badge tone="danger" pulse>Agent quarantined</Badge>}
                           <span className="text-fg-subtle">caught by {res.caught_by_layers?.length === 1 ? "layer" : "layers"} {res.caught_by_layers?.join(", ")}</span>
                         </div>
                         {res.recovery && <p className="mt-1.5 text-fg-muted">{res.recovery}</p>}
@@ -302,10 +303,10 @@ function RedTeam({ onDone }) {
                     )}
                   </div>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </Card>
   );

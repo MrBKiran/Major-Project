@@ -41,13 +41,10 @@ export function Txt({ step = 'body', tone = 'fg', weight = 'regular', mono = fal
   );
 }
 
-/** Metadata voice: small, uppercase, mono — status and labels, not sentences. */
-export function Meta({ children, tone = 'subtle' }: { children: ReactNode; tone?: Tone }) {
-  return (
-    <Txt step="caption" mono tone={tone} style={{ textTransform: 'uppercase', letterSpacing: 1.2 }}>
-      {children}
-    </Txt>
-  );
+/** Metadata voice: small and quiet, sentence case — status and labels. `mono`
+ *  is for data (a VIN, a code), never to make a label look like one. */
+export function Meta({ children, tone = 'subtle', mono = false }: { children: ReactNode; tone?: Tone; mono?: boolean }) {
+  return <Txt step="label" weight="medium" mono={mono} tone={tone}>{children}</Txt>;
 }
 
 export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
@@ -81,7 +78,7 @@ export function Pill({ children, tone = 'p1', label }: { children: ReactNode; to
   return (
     <View accessible={Boolean(label)} accessibilityLabel={label}
           style={{ alignSelf: 'flex-start', backgroundColor: bg, borderRadius: radius.chip, paddingHorizontal: space[2], paddingVertical: space[1] }}>
-      <Txt step="caption" mono weight="medium" style={{ color: ink, textTransform: 'uppercase', letterSpacing: 1 }}>{children}</Txt>
+      <Txt step="label" weight="semibold" style={{ color: ink }}>{children}</Txt>
     </View>
   );
 }

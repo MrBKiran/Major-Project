@@ -193,10 +193,12 @@ export default function OwnerApp({ standalone = false }) {
 function LoadingPane() {
   const night = useNight();
   const t = tokens(night);
+  // The blocks say "loading" only to someone who can see them.
   return (
-    <div style={{ padding: 24, display: "grid", gap: 12 }}>
+    <div role="status" style={{ padding: 24, display: "grid", gap: 12 }}>
+      <span className="sr-only">Loading your car…</span>
       {[64, 200, 120].map((h, i) => (
-        <div key={i} style={{ height: h, borderRadius: 14, background: t.hatch }} />
+        <div key={i} aria-hidden="true" style={{ height: h, borderRadius: 14, background: t.hatch }} />
       ))}
     </div>
   );
@@ -241,7 +243,7 @@ function Home({ detail, top, economics, booking, go }) {
     <div style={{ padding: "6px 18px 28px" }}>
       <div style={{ paddingTop: 10, paddingBottom: 18 }}>
         <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>{v.model}</div>
-        <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+        <Meta night={night} mono>
           {v.vin} · {Number(v.odometer || 0).toLocaleString("en-IN")} km
         </Meta>
       </div>
@@ -307,7 +309,7 @@ function TimelineNode({ title, sub, dot }) {
         borderRadius: 99, background: dot, border: `2px solid ${t.page}`,
       }} />
       <div style={{ fontFamily: SANS, fontSize: 14, color: t.ink, fontWeight: 500 }}>{title}</div>
-      {sub && <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>{sub}</Meta>}
+      {sub && <Meta night={night} mono>{sub}</Meta>}
     </div>
   );
 }
@@ -373,7 +375,7 @@ export function NowCard({ top, economics = null, go }) {
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Pill night={night}>{alertBadge(top)}</Pill>
-        <Meta night={night}>now</Meta>
+        <Meta night={night}>Now</Meta>
       </div>
 
       <div style={{ marginTop: 14 }}>
@@ -421,7 +423,7 @@ function BookedCard({ booking, onOpen }) {
       <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink, marginTop: 8 }}>
         {formatSlot(booking.slot_start)}
       </div>
-      <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+      <Meta night={night}>
         {centreName(booking)} · tap for the receipt
       </Meta>
     </button>
@@ -503,8 +505,8 @@ function WhyThisPart({ detail, top, economics, back, go }) {
             }}>
               <Spark night={night} w={340} h={64} values={values} tone={ACCENT} />
               <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
-                <Meta night={night} style={{ textTransform: "none" }}>
-                  {evidence.name} · last 24 h
+                <Meta night={night}>
+                  {cap(evidence.name)} · last 24 h
                 </Meta>
                 {latest != null && (
                   <span style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
@@ -617,7 +619,7 @@ function AgentScreen({ vin, back, onBooked }) {
     <>
       <ScreenHeader
         title="AutoSaarthi agent" back={back}
-        right={<Meta night={night}>{busy ? "thinking" : "live"}</Meta>}
+        right={<Meta night={night}>{busy ? "Thinking" : "Live"}</Meta>}
       />
 
       <div style={{ padding: "16px 16px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -648,7 +650,7 @@ function AgentScreen({ vin, back, onBooked }) {
               <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 600, color: t.ink }}>
                 {formatSlot(slot.slot_start)}
               </div>
-              <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+              <Meta night={night}>
                 {slot.center_name || slot.center_id}
               </Meta>
             </div>
@@ -720,7 +722,7 @@ function Bubble({ m }) {
         {m.grounded_in > 0 && (
           <div style={{ marginBottom: 5 }}>
             <Meta night={night} style={{ fontSize: 11, color: tokens(night).positive }}>
-              from {m.grounded_in} facts about your car
+              From {m.grounded_in} facts about your car
             </Meta>
           </div>
         )}
@@ -819,7 +821,7 @@ function History({ detail, back }) {
                     <span style={{ fontFamily: MONO, fontSize: 14, color: t.ink }}>{inr(h.cost)}</span>
                   )}
                 </div>
-                <Meta night={night} style={{ textTransform: "none", letterSpacing: "0.02em" }}>
+                <Meta night={night} mono>
                   {formatDate(h.date)}
                   {h.km_at_service ? ` · ${Number(h.km_at_service).toLocaleString("en-IN")} km` : ""}
                 </Meta>

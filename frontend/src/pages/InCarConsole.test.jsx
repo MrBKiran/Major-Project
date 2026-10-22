@@ -315,6 +315,14 @@ describe("the console page", () => {
     expect(screen.queryByText(/fuel|LTE/)).not.toBeInTheDocument();
   });
 
+  it("keeps the clock one width, so nothing beside it moves when the hour gains a digit", async () => {
+    // At 10:00 the clock grew a character and pushed the gear letter and the VIN line sideways.
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-10-20T04:14:00Z") });   // 9:44 IST
+    render(<InCarConsole />);
+    await screen.findByText(/your battery is wearing out/i);
+    expect(screen.getByText("9:44")).toHaveStyle({ display: "inline-block", minWidth: "5ch" });
+  });
+
   it("shows the speed of a live reading", async () => {
     current = moving();
     render(<InCarConsole />);
