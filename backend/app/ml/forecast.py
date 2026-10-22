@@ -21,7 +21,9 @@ demand are different jobs arriving at the same bays, so they sum.
 from __future__ import annotations
 
 import datetime as dt
+import threading
 import warnings
+from collections import OrderedDict
 
 import pandas as pd
 from sqlalchemy import text
@@ -35,6 +37,17 @@ SARIMAX_SEASONAL = (1, 1, 1, 7)
 
 MIN_HISTORY_DAYS = 30
 OVERLOAD_THRESHOLD = 0.90     # forecast/capacity above this flags the day
+
+# Fitted baselines, keyed by centre, horizon and the history they were fitted
+# on. A fit is most of a forecast's cost (~0.7 s a centre) and holds the
+# interpreter while it runs: refitting every centre on every request let two
+# open Service Ops pages stall the whole server for a minute. The history moves
+# a day at a time at most, so a fit is reused until it changes; the
+# predicted-failure load is read fresh every time.
+_FITS: OrderedDict[tuple, tuple[pd.Series, pd.DataFrame]] = OrderedDict()
+_FITS_MAX = 64
+_FITS_LOCK = threading.Lock()
+_FITTING: dict[tuple, threading.Lock] = {}
 
 
 def _history(center_id: str) -> pd.Series:
@@ -85,6 +98,40 @@ def _predicted_failure_load(center_id: str, horizon_days: int) -> dict[str, int]
     return load
 
 
+def _fit(history: pd.Series, horizon_days: int) -> tuple[pd.Series, pd.DataFrame]:
+    with warnings.catch_warnings():
+        # statsmodels is noisy about convergence on short seasonal series; the
+        # fit is still usable and the caller sees the numbers either way.
+        warnings.simplefilter("ignore")
+        fitted = SARIMAX(history, order=SARIMAX_ORDER, seasonal_order=SARIMAX_SEASONAL,
+                          enforce_stationarity=False, enforce_invertibility=False).fit(disp=False)
+        pred = fitted.get_forecast(steps=horizon_days)
+        return pred.predicted_mean, pred.conf_int(alpha=0.20)
+
+
+def _baseline(center_id: str, history: pd.Series, horizon_days: int) -> tuple[pd.Series, pd.DataFrame]:
+    """The SARIMAX mean and 80% interval, fitted once per centre, horizon and
+    history. Requests that arrive while it is being fitted wait for that fit
+    rather than starting their own."""
+    key = (center_id, horizon_days, tuple(history.index.date), tuple(history.to_list()))
+    with _FITS_LOCK:
+        if key in _FITS:
+            _FITS.move_to_end(key)
+            return _FITS[key]
+        fitting = _FITTING.setdefault(key, threading.Lock())
+    with fitting:
+        with _FITS_LOCK:
+            if key in _FITS:
+                return _FITS[key]
+        result = _fit(history, horizon_days)
+        with _FITS_LOCK:
+            _FITS[key] = result
+            while len(_FITS) > _FITS_MAX:
+                _FITS.popitem(last=False)
+            _FITTING.pop(key, None)
+    return result
+
+
 def forecast_center(center_id: str, horizon_days: int = 14) -> dict:
     history = _history(center_id)
     capacity = _capacity(center_id)
@@ -93,16 +140,7 @@ def forecast_center(center_id: str, horizon_days: int = 14) -> dict:
         return {"center_id": center_id, "error": "insufficient history to forecast",
                 "history_days": len(history)}
 
-    with warnings.catch_warnings():
-        # statsmodels is noisy about convergence on short seasonal series; the
-        # fit is still usable and the caller sees the numbers either way.
-        warnings.simplefilter("ignore")
-        fitted = SARIMAX(history, order=SARIMAX_ORDER, seasonal_order=SARIMAX_SEASONAL,
-                          enforce_stationarity=False, enforce_invertibility=False).fit(disp=False)
-        pred = fitted.get_forecast(steps=horizon_days)
-        mean = pred.predicted_mean
-        conf = pred.conf_int(alpha=0.20)
-
+    mean, conf = _baseline(center_id, history, horizon_days)
     failure_load = _predicted_failure_load(center_id, horizon_days)
 
     series = []

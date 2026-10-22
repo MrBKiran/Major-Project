@@ -68,6 +68,21 @@ def load_doc() -> dict:
     return yaml.safe_load(VEHICLES_YAML.read_text(encoding="utf-8"))
 
 
+def _open_day(session, centre: dict, day: dt.date) -> int:
+    """One day's bookable slots for a centre, sized off its own `daily_capacity`."""
+    per_hour = max(1, round(centre.get("daily_capacity", 12) / len(SLOT_HOURS)))
+    n = 0
+    for hour in SLOT_HOURS:
+        start = dt.datetime.combine(day, dt.time(hour=hour), tzinfo=IST)
+        for _ in range(per_hour):
+            session.add(CapacitySlot(
+                center_id=centre["id"], slot_start=start,
+                slot_end=start + dt.timedelta(hours=1), status="open",
+            ))
+            n += 1
+    return n
+
+
 def seed_capacity_slots(session, centers: list[dict]) -> int:
     """Open `SLOT_DAYS` of bookable slots per centre, sized off its own
     `daily_capacity` — this is what makes Pune's under-capacity real for the
@@ -75,19 +90,34 @@ def seed_capacity_slots(session, centers: list[dict]) -> int:
     today = dt.date.today()
     n = 0
     for c in centers:
-        per_hour = max(1, round(c.get("daily_capacity", 12) / len(SLOT_HOURS)))
         for day_offset in range(SLOT_DAYS):
             day = today + dt.timedelta(days=day_offset)
             if day.weekday() == 6:   # centres close Sunday
                 continue
-            for hour in SLOT_HOURS:
-                start = dt.datetime.combine(day, dt.time(hour=hour), tzinfo=IST)
-                for _ in range(per_hour):
-                    session.add(CapacitySlot(
-                        center_id=c["id"], slot_start=start,
-                        slot_end=start + dt.timedelta(hours=1), status="open",
-                    ))
-                    n += 1
+            n += _open_day(session, c, day)
+    return n
+
+
+def extend_capacity(session, centers: list[dict]) -> int:
+    """Open the coming `SLOT_DAYS` on every day a centre has no slots yet.
+
+    Seeding runs once, so a long-lived demo database's calendar runs out. This
+    fills in what is missing and never touches a slot that exists — booked,
+    held or open — so it is safe to run on a database with live bookings, and
+    running it twice adds nothing the second time.
+    """
+    today = dt.datetime.now(IST).date()
+    since = dt.datetime.combine(today, dt.time(), tzinfo=IST)
+    n = 0
+    for c in centers:
+        have = set(session.execute(text(
+            "SELECT DISTINCT (slot_start AT TIME ZONE 'Asia/Kolkata')::date FROM capacity_slots "
+            "WHERE center_id = :c AND slot_start >= :since"), {"c": c["id"], "since": since}).scalars())
+        for day_offset in range(SLOT_DAYS):
+            day = today + dt.timedelta(days=day_offset)
+            if day.weekday() == 6 or day in have:   # centres close Sunday
+                continue
+            n += _open_day(session, c, day)
     return n
 
 
