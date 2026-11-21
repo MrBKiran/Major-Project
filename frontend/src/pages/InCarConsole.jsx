@@ -29,6 +29,7 @@ import {
   alertBadge, COMPONENTS, componentLabel, drivingLeft, formatClock, formatINR as inr, formatSlot, OWNER,
   serviceDue, severityWord, wearingOut,
 } from "@autosaarthi/core";
+import { Tilt } from "../fx";
 import { Empty, Skeleton } from "../ui.jsx";
 import {
   CarDock, CarFrame, CarStatusBar, CostRows, GhostButton, Headline, MapPane,
@@ -209,6 +210,9 @@ export default function InCarConsole() {
         </span>
       </div>
 
+      {/* The head unit sits in 3D: it leans a couple of degrees toward the pointer.
+          Kept small — it holds working controls — and off under reduced motion. */}
+      <Tilt max={2.5} className="rounded-3xl">
       <CarFrame
         night={night}
         status={
@@ -252,6 +256,7 @@ export default function InCarConsole() {
           pending={pending} refusal={refusal}
         />
       </CarFrame>
+      </Tilt>
 
       {carScreen && <Verdict screen={carScreen} />}
     </div>

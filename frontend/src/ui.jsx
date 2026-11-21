@@ -7,6 +7,7 @@
 import { chart, day } from "@autosaarthi/tokens";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { gsap, reducedMotion } from "./fx/gsap.js";
 
 export const SEVERITY = {
   P1: { label: "P1", cls: "bg-p1/10 text-p1-ink border-p1/30" },
@@ -52,12 +53,12 @@ export const CHART = {
  */
 export function BrandMark({ className = "h-7 w-7 rounded-lg" }) {
   return (
-    <span className={`grid shrink-0 place-items-center bg-accent text-white ${className}`}>
+    <span className={`brand-mark grid shrink-0 place-items-center bg-accent text-white ${className}`}>
       <svg viewBox="0 0 1024 1024" className="h-[76%] w-[76%]" aria-hidden="true" focusable="false">
         <path d="M262 820 L512 214 L762 820" fill="none" stroke="currentColor" strokeWidth="104"
               strokeLinecap="round" strokeLinejoin="round" />
-        <rect x="490" y="652" width="44" height="120" rx="22" fill="currentColor" />
-        <rect x="496" y="500" width="32" height="88" rx="16" fill="currentColor" />
+        <rect className="brand-dash" x="490" y="652" width="44" height="120" rx="22" fill="currentColor" />
+        <rect className="brand-dash" x="496" y="500" width="32" height="88" rx="16" fill="currentColor" />
       </svg>
     </span>
   );
@@ -66,7 +67,7 @@ export function BrandMark({ className = "h-7 w-7 rounded-lg" }) {
 export function Card({ title, subtitle, right, children, className = "", interactive = false }) {
   return (
     <section
-      className={`rounded-xl border border-border bg-surface-card transition-[border-color,box-shadow,transform] duration-200 ${
+      className={`spot tilt-soft rounded-xl border border-border bg-surface-card ${
         interactive ? "hover:-translate-y-0.5 hover:border-fg-subtle hover:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.22)]" : ""
       } ${className}`}
     >
@@ -94,25 +95,21 @@ export function Card({ title, subtitle, right, children, className = "", interac
  * measurement being taken rather than text that was just always there. Only
  * animates plain finite numbers; anything else (strings, "7/46", "—") renders
  * immediately, unchanged. */
-function useCountUp(value, duration = 700) {
+function useCountUp(value, duration = 0.9) {
   const isPlainNumber = typeof value === "number" && Number.isFinite(value);
   const [display, setDisplay] = useState(isPlainNumber ? 0 : value);
-  const raf = useRef(null);
 
+  // A GSAP tween on a plain object, read back into state on every update. Ease
+  // is power3.out — it decelerates into the true value and never overshoots it,
+  // which a counter must not (a "back" ease would briefly show 11 for a 10).
   useEffect(() => {
-    if (!isPlainNumber) { setDisplay(value); return; }
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { setDisplay(value); return; }
-    const from = 0;
-    const t0 = performance.now();
-    const ease = (t) => 1 - Math.pow(1 - t, 3);
-    const step = (now) => {
-      const p = Math.min(1, (now - t0) / duration);
-      setDisplay(from + (value - from) * ease(p));
-      if (p < 1) raf.current = requestAnimationFrame(step);
-    };
-    raf.current = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!isPlainNumber) { setDisplay(value); return undefined; }
+    if (reducedMotion()) { setDisplay(value); return undefined; }
+    const counter = { v: 0 };
+    const tween = gsap.to(counter, {
+      v: value, duration, ease: "power3.out", onUpdate: () => setDisplay(counter.v),
+    });
+    return () => tween.kill();
   }, [value, isPlainNumber, duration]);
 
   if (!isPlainNumber) return value;
@@ -128,10 +125,25 @@ const TONES = {
   accent: "text-accent-ink",
 };
 
+// The thin line that grows in above a figure, in the figure's own tone. Colour
+// is never the only carrier of meaning here — the label and the number say it.
+const LINES = {
+  default: "bg-fg-decorative",
+  danger: "bg-p1",
+  warn: "bg-p2",
+  good: "bg-ok",
+  accent: "bg-accent",
+};
+
 function StatItem({ value, label, sub, tone = "default", bare }) {
   const shown = useCountUp(value);
   return (
-    <div className={`min-w-0 flex-1 ${bare ? "py-1 pr-5 md:not-first:pl-5" : "px-5 py-3.5"}`}>
+    <div className={`group relative min-w-0 flex-1 transition-colors duration-200 ${
+      bare ? "py-1 pr-5 md:not-first:pl-5" : "px-5 py-3.5 hover:bg-surface-inset/50"
+    }`}>
+      {!bare && (
+        <span aria-hidden className={`stat-line absolute inset-x-5 top-0 h-0.5 rounded-b ${LINES[tone]} opacity-70 transition-opacity duration-200 group-hover:opacity-100`} />
+      )}
       <dt className="text-label text-fg-muted">{label}</dt>
       <dd className={`num mt-1 text-title font-semibold leading-none ${TONES[tone]}`}>
         {shown}
@@ -147,7 +159,7 @@ function StatItem({ value, label, sub, tone = "default", bare }) {
 export function StatStrip({ items, bare = false }) {
   return (
     <dl className={`grid grid-cols-2 md:flex md:divide-x md:divide-border ${
-      bare ? "gap-y-3" : "rounded-xl border border-border bg-surface-card"
+      bare ? "gap-y-3" : "spot tilt-soft overflow-hidden rounded-xl border border-border bg-surface-card"
     }`}>
       {items.map((item) => <StatItem key={item.label} {...item} bare={bare} />)}
     </dl>
@@ -177,7 +189,7 @@ export function SeverityPill({ severity }) {
   if (!severity) return <Badge tone="good">healthy</Badge>;
   const s = SEVERITY[severity] ?? SEVERITY.P3;
   return (
-    <span className={`inline-flex rounded-md border px-2 py-0.5 text-caption font-bold ${s.cls}`}>
+    <span className={`inline-flex rounded-md border px-2 py-0.5 text-caption font-bold ${s.cls} ${severity === "P1" ? "ring-pulse" : ""}`}>
       {s.label}
     </span>
   );
@@ -277,7 +289,7 @@ export function Dialog({ title, subtitle, header, actions, onClose, className = 
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
-        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-card shadow-2xl outline-none ${className}`}
+        className={`pop-in flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-card shadow-2xl outline-none ${className}`}
       >
         <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
           {header ? (

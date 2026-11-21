@@ -19,9 +19,16 @@ export default defineConfig({
       "/ws": { target: "ws://localhost:8010", ws: true },
     },
   },
+  // One React for everything. Motion's runtime (framer-motion) is hoisted to the
+  // repo root by the workspace install, where there is no `react` to import;
+  // deduping resolves it from this package instead.
+  resolve: { dedupe: ["react", "react-dom"] },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.js"],
     include: ["src/**/*.test.{js,jsx}"],
+    // Vitest loads dependencies natively by default, which would bypass the dedupe
+    // above; inlining Motion makes it go through Vite's resolver like app code.
+    server: { deps: { inline: [/framer-motion/, /node_modules\/motion\//] } },
   },
 });

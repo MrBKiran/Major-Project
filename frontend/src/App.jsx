@@ -19,6 +19,7 @@ import InCarConsole from "./pages/InCarConsole.jsx";
 import OwnerApp from "./pages/OwnerApp.jsx";
 import Account from "./pages/Account.jsx";
 import MobileApp from "./MobileApp.jsx";
+import { CommandPalette, DotGrid, gsap, reducedMotion, revealOnMount, usePaletteHotkey } from "./fx";
 import { BrandMark } from "./ui.jsx";
 
 const ICONS = {
@@ -103,17 +104,56 @@ function Icon({ id }) {
   );
 }
 
+const MOD_KEY = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl";
+
 function Shell() {
-  const { principal } = useAuth();
+  const { principal, logout } = useAuth();
   const visibleTabs = TABS.filter((t) => tabVisible(t, principal.permissions, principal));
   const [tab, setTab] = useState(visibleTabs[0]?.id ?? null);
+  const [paletteOpen, setPaletteOpen] = usePaletteHotkey();
+  const mainRef = useRef(null);
+  const headerRef = useRef(null);
+
+  // Cards rise into place in 3D whenever they mount anywhere in the page — see
+  // fx/gsap.js. Watching the DOM rather than the route is what lets it catch a
+  // card that only appears once its data has loaded.
+  useLayoutEffect(() => revealOnMount(mainRef.current), []);
+
+  // The header's own entrance, once: the nav items drop in one after another.
+  useLayoutEffect(() => {
+    if (!headerRef.current || reducedMotion()) return undefined;
+    const ctx = gsap.context(() => {
+      gsap.from("nav[aria-label='Console sections'] button", {
+        opacity: 0, y: -14, rotationX: -50, transformPerspective: 600, stagger: 0.06,
+        duration: 0.7, ease: "back.out(1.6)", clearProps: "opacity,transform,transformPerspective",
+      });
+    }, headerRef);
+    return () => ctx.revert();
+  }, []);
   // "account" is opened from the account menu, not from the tab bar, so it is not in TABS.
   const active = tab === "account" ? { id: "account" } : TABS.find((t) => t.id === tab);
   const Page = tab === "account" ? Account : tab ? PAGES[tab] : null;
 
+  // The palette offers exactly what the tab bar and account menu do — built from
+  // the same permission-filtered list, so it can never reveal a page the role lacks.
+  const commands = [
+    ...visibleTabs.map((t) => ({
+      id: `go:${t.id}`, label: `Go to ${t.label}`, hint: "Section", keywords: t.id,
+      icon: <Icon id={t.id} />, run: () => setTab(t.id),
+    })),
+    { id: "go:account", label: "Account & security", hint: "Account", keywords: "profile mfa password", run: () => setTab("account") },
+    { id: "act:logout", label: "Log out (all sessions)", hint: "Account", keywords: "sign out", run: logout },
+  ];
+
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-10 border-b border-border bg-surface-page/95 backdrop-blur">
+      {/* The dot field reacts to the pointer behind everything; cards sit on top. */}
+      <DotGrid className="fixed inset-0 z-0 h-full w-full opacity-60" />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={commands} />
+
+      <header ref={headerRef} className="sticky top-0 z-10 border-b border-border bg-surface-page/90 backdrop-blur-md">
+        {/* Re-keyed by section, so it sweeps across again on every switch. */}
+        <span key={tab} aria-hidden className="route-bar" />
         <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-6 py-3">
           <div className="flex items-center gap-2">
             <BrandMark />
@@ -125,11 +165,26 @@ function Shell() {
 
           <SectionNav tabs={visibleTabs} active={tab} onSelect={setTab} />
 
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Open command palette"
+            title={`Jump to… (${MOD_KEY} K)`}
+            className="hidden shrink-0 items-center gap-2 rounded-lg border border-border bg-surface-card px-2.5 py-1.5 text-label text-fg-muted transition-colors duration-200 hover:border-fg-subtle hover:text-fg-secondary md:flex"
+          >
+            <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+            </svg>
+            {/* Icon-only until there is room: the tabs come first (see AccountMenu's note). */}
+            <span className="hidden min-[1600px]:inline">Jump to</span>
+            <span className="hidden min-[1600px]:inline-flex"><kbd className="kbd">{MOD_KEY} K</kbd></span>
+          </button>
+
           <AccountMenu onAccount={() => setTab("account")} />
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-6 py-6">
+      <main ref={mainRef} className="relative z-[1] mx-auto max-w-[1400px] px-6 py-6">
         {!active ? (
           <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center">
             <p className="text-body text-fg-tertiary">No page available for this role.</p>
@@ -187,9 +242,12 @@ export function SectionNav({ tabs, active, onSelect }) {
           {indicator && (
             <span
               aria-hidden
-              className="absolute inset-y-1 rounded-lg bg-surface-inset transition-[left,width] duration-300 ease-out"
+              className="absolute inset-y-1 rounded-lg bg-surface-inset transition-[left,width] duration-500 ease-[cubic-bezier(0.34,1.35,0.64,1)]"
               style={{ left: indicator.left, width: indicator.width }}
-            />
+            >
+              {/* A lit edge under the current section; it rides the same spring. */}
+              <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-accent" />
+            </span>
           )}
           {tabs.map((t) => (
             <button
@@ -198,11 +256,11 @@ export function SectionNav({ tabs, active, onSelect }) {
               ref={(el) => { btnRefs.current[t.id] = el; }}
               onClick={() => onSelect(t.id)}
               aria-current={active === t.id ? "page" : undefined}
-              className={`relative z-[1] flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-body-sm font-medium transition-colors duration-200 ${
+              className={`group relative z-[1] flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-body-sm font-medium transition-colors duration-200 ${
                 active === t.id ? "text-fg-strong" : "text-fg-muted hover:text-fg-secondary"
               }`}
             >
-              <span aria-hidden className={active === t.id ? "text-accent-ink" : "text-fg-subtle"}>
+              <span aria-hidden className={`transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:-rotate-6 group-hover:scale-125 ${active === t.id ? "text-accent-ink" : "text-fg-subtle"}`}>
                 <Icon id={t.id} />
               </span>
               {t.label}
@@ -292,7 +350,7 @@ export function AccountMenu({ onAccount }) {
       </button>
 
       {open && (
-        <div id={menuId} className="animate-in absolute right-0 top-[calc(100%+6px)] w-64 origin-top-right rounded-lg border border-border bg-surface-card py-1.5 shadow-xl">
+        <div id={menuId} className="pop-in absolute right-0 top-[calc(100%+6px)] w-64 origin-top-right rounded-lg border border-border bg-surface-card py-1.5 shadow-xl">
           {memberships === null ? (
             <div className="space-y-1.5 px-3 py-2">
               <div className="skeleton h-3 w-32" />
