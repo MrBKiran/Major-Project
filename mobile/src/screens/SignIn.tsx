@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 
+import { Rise, RoadStrip } from '@/components/fx';
 import { Button, Field, Meta, Notice, Screen, Txt } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -82,7 +83,7 @@ export default function SignIn() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
-        <View style={{ marginTop: space[8], gap: space[2] }}>
+        <Rise index={0} style={{ marginTop: space[6], gap: space[2] }}>
           <Meta>AutoSaarthi</Meta>
           <Txt step="display" weight="semibold" accessibilityRole="header">
             {mfaToken ? 'One more step' : 'Sign in'}
@@ -90,7 +91,9 @@ export default function SignIn() {
           <Txt tone="muted">
             {mfaToken ? 'Your account has a second factor.' : 'See how your car is doing, and book its service.'}
           </Txt>
-        </View>
+        </Rise>
+
+        <Rise index={1}><RoadStrip height={150} /></Rise>
 
         {!mfaToken && phoneOffered && (
           <View accessibilityRole="tablist" style={{ flexDirection: 'row', backgroundColor: c.inset, borderRadius: radius.control, padding: space[1] }}>

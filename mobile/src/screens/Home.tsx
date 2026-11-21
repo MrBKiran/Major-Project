@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { CostRows, WithCar } from '@/components/car';
+import { Rise, RoadStrip, TiltCard } from '@/components/fx';
 import { Button, Card, Meta, Pill, Txt } from '@/components/ui';
 import type { Detail, Service } from '@/lib/garage';
 import { space } from '@/theme';
@@ -32,12 +33,16 @@ function HomeBody({ detail, service }: { detail: Detail; service: Service }) {
 
   return (
     <>
-      <View style={{ gap: space[1] }}>
+      <Rise index={0} style={{ gap: space[1] }}>
         <Txt step="display" weight="semibold" accessibilityRole="header">{service.model}</Txt>
         <Txt step="label" mono tone="subtle">{facts}</Txt>
-      </View>
+      </Rise>
+
+      {/* The brand road, in 3D, with the car on it — decoration only. */}
+      <Rise index={1}><RoadStrip /></Rise>
 
       {booking && (
+        <Rise index={2}>
         <Card tone="ok">
           <Meta tone="positive">{booking.status === 'booked' ? 'Confirmed' : 'Held'}</Meta>
           <Txt step="title" weight="semibold" style={{ marginTop: space[2] }}>Service booked</Txt>
@@ -46,9 +51,11 @@ function HomeBody({ detail, service }: { detail: Detail; service: Service }) {
             <Button kind="ghost" onPress={() => router.push('/book')}>Change or cancel</Button>
           </View>
         </Card>
+        </Rise>
       )}
 
       {alert ? (
+        <Rise index={3}><TiltCard>
         <Card>
           <Pill tone={alert.severity === 'P1' ? 'p1' : 'amber'} label={alertSpoken(alert)}>{alertBadge(alert)}</Pill>
           <Txt step="display" weight="semibold" style={{ marginTop: space[3] }}>{wearingOut(alert.component)}</Txt>
@@ -69,18 +76,23 @@ function HomeBody({ detail, service }: { detail: Detail; service: Service }) {
             </View>
           )}
         </Card>
+        </TiltCard></Rise>
       ) : !booking && (
+        <Rise index={3}><TiltCard>
         <Card>
           <Meta tone="positive">Healthy · agent watching</Meta>
           <Txt step="display" weight="semibold" style={{ marginTop: space[3] }}>{OWNER.healthyTitle}</Txt>
           <Txt step="lead" tone="secondary" style={{ marginTop: space[2] }}>{OWNER.healthyBody}</Txt>
         </Card>
+        </TiltCard></Rise>
       )}
 
       {last && (
-        <Txt step="bodySm" tone="muted">
-          {`Last service · ${formatDate(last.date)} · ${humanize(last.service_type)}`}
-        </Txt>
+        <Rise index={4}>
+          <Txt step="bodySm" tone="muted">
+            {`Last service · ${formatDate(last.date)} · ${humanize(last.service_type)}`}
+          </Txt>
+        </Rise>
       )}
     </>
   );

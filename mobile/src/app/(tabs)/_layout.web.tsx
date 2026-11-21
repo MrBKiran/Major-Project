@@ -5,19 +5,33 @@
  */
 
 import { TabList, Tabs, TabSlot, TabTrigger, type TabTriggerSlotProps } from 'expo-router/ui';
-import { Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Animated, Pressable } from 'react-native';
 
+import { useMotionOk } from '@/components/fx';
 import { Txt } from '@/components/ui';
 import { useTheme } from '@/theme';
 
 // React 19: `ref` arrives as an ordinary prop, so no forwardRef.
 function TabButton({ label, isFocused, ...props }: Omit<TabTriggerSlotProps, 'ref'> & { label: string }) {
   const { c } = useTheme();
+  const ok = useMotionOk();
+  // 0 → 1 as the tab becomes current: the bar above it springs open from the
+  // middle and the label lifts a little. Instant when motion is off.
+  const [on] = useState(() => new Animated.Value(isFocused ? 1 : 0));
+  useEffect(() => {
+    if (!ok) { on.setValue(isFocused ? 1 : 0); return; }
+    Animated.spring(on, { toValue: isFocused ? 1 : 0, friction: 6, tension: 150, useNativeDriver: false }).start();
+  }, [isFocused, ok, on]);
+
   return (
     <Pressable {...props} accessibilityRole="tab" accessibilityState={{ selected: isFocused }}
-               style={{ flex: 1, minHeight: 56, alignItems: 'center', justifyContent: 'center',
-                        borderTopWidth: 2, borderTopColor: isFocused ? c.accentDeep : 'transparent' }}>
-      <Txt step="label" weight={isFocused ? 'semibold' : 'regular'} tone={isFocused ? 'fg' : 'muted'}>{label}</Txt>
+               style={{ flex: 1, minHeight: 56, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={{ position: 'absolute', top: 0, left: '24%', right: '24%', height: 3, borderRadius: 2,
+                              backgroundColor: c.accentDeep, opacity: on, transform: [{ scaleX: on }] }} />
+      <Animated.View style={{ transform: [{ translateY: on.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) }] }}>
+        <Txt step="label" weight={isFocused ? 'semibold' : 'regular'} tone={isFocused ? 'fg' : 'muted'}>{label}</Txt>
+      </Animated.View>
     </Pressable>
   );
 }

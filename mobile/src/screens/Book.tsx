@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { WithCar } from '@/components/car';
+import { Rise } from '@/components/fx';
 import { Button, Card, Meta, Notice, Txt } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useGarage, type Service, type Slot } from '@/lib/garage';
@@ -90,9 +91,11 @@ function BookBody({ service }: { service: Service }) {
         <View style={{ gap: space[3] }}>
           <Txt step="label" weight="medium" tone="muted">{booking ? 'Move it to' : 'Open slots near you'}</Txt>
           <View accessibilityRole="radiogroup" style={{ gap: space[2] }}>
-            {slots.map((s) => (
-              <SlotRow key={keyOf(s)} slot={s} selected={slot !== null && keyOf(s) === keyOf(slot)}
-                       onPress={() => setChosen(keyOf(s))} />
+            {slots.map((s, i) => (
+              <Rise key={keyOf(s)} index={i}>
+                <SlotRow slot={s} selected={slot !== null && keyOf(s) === keyOf(slot)}
+                         onPress={() => setChosen(keyOf(s))} />
+              </Rise>
             ))}
           </View>
           {pick && slot && (booking ? (
