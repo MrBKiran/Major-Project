@@ -15,12 +15,17 @@ import { api, ApiError } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { featureLabel, formatDate, pluralize } from "@autosaarthi/core";
 import { Badge, Card, CHART, Dialog, Empty, SeverityPill, Skeleton, SkeletonStatRow, StatStrip } from "../ui.jsx";
+import { TwinScene } from "../fx";
+import { useThemeMode } from "../theme.jsx";
+import { inputCls } from "./login/parts.jsx";
 
 export default function FleetMonitoring() {
   const { can } = useAuth();
   const [fleet, setFleet] = useState(null);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState("");
+  const [band, setBand] = useState("all");
 
   useEffect(() => {
     api.get("/api/fleet", { limit: 100 })
@@ -49,6 +54,19 @@ export default function FleetMonitoring() {
 
   const { vehicles, page_counts, page, scope } = fleet;
 
+  // Searching and the urgency chips only narrow what is shown of the list the
+  // server already scoped to this person; nothing here widens it.
+  const bandOf = (v) => (v.severity === "P1" ? "urgent" : v.severity ? "watch" : "healthy");
+  const counts = {
+    all: vehicles.length,
+    urgent: vehicles.filter((v) => bandOf(v) === "urgent").length,
+    watch: vehicles.filter((v) => bandOf(v) === "watch").length,
+    healthy: vehicles.filter((v) => bandOf(v) === "healthy").length,
+  };
+  const needle = query.trim().toLowerCase();
+  const shown = vehicles.filter((v) => (band === "all" || bandOf(v) === band)
+    && (!needle || `${v.model} ${v.vin} ${v.city} ${v.component ?? ""}`.toLowerCase().includes(needle)));
+
   if (!vehicles.length) {
     return (
       <Empty>
@@ -67,6 +85,8 @@ export default function FleetMonitoring() {
         { value: page_counts.healthy, label: "Healthy", tone: "good" },
       ]} />
 
+      <FailureHorizon vehicles={vehicles} counts={counts} selected={selected} onSelect={setSelected} />
+
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1.4fr]">
         <Card
           title="Fleet"
@@ -76,7 +96,35 @@ export default function FleetMonitoring() {
           {/* A scroll box inside a scrolling page: focusable so the keyboard can
               scroll it, and counted below so a row cut by its edge reads as
               "more", not as a rendering fault. */}
-          <div role="region" aria-label="Fleet list" tabIndex={0} className="-mx-5 max-h-[612px] overflow-y-auto">
+          <div className="-mx-5 -mt-5 mb-3 space-y-2.5 border-b border-border px-5 py-3">
+            <input
+              type="search"
+              aria-label="Search vehicles"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search model, VIN, city or part…"
+              className={inputCls}
+            />
+            <div role="group" aria-label="Filter by urgency" className="flex flex-wrap gap-1.5">
+              {Object.keys(BAND_LABEL).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={band === k}
+                  onClick={() => setBand(k)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-label font-medium transition-colors duration-200 ${
+                    band === k
+                      ? "border-accent/50 bg-accent/10 text-accent-ink"
+                      : "border-border bg-surface-card text-fg-muted hover:border-fg-subtle hover:text-fg-secondary"
+                  }`}
+                >
+                  {BAND_LABEL[k]}
+                  <span className="num text-caption opacity-70">{counts[k]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div role="region" aria-label="Fleet list" tabIndex={0} className="-mx-5 max-h-[560px] overflow-y-auto">
             <table className="w-full text-body-sm">
               <thead className="sticky top-0 bg-surface-card">
                 <tr className="border-b border-border text-left text-label text-fg-muted">
@@ -86,7 +134,14 @@ export default function FleetMonitoring() {
                 </tr>
               </thead>
               <tbody>
-                {vehicles.map((v) => (
+                {shown.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-5 py-8 text-center text-body-sm text-fg-muted">
+                      No vehicle matches that search.
+                    </td>
+                  </tr>
+                )}
+                {shown.map((v) => (
                   <tr
                     key={v.vin}
                     // The row stays clickable for a mouse; the button in it is what the
@@ -118,6 +173,7 @@ export default function FleetMonitoring() {
                               ~{v.days_to_failure}d
                             </span>
                           )}
+                          {v.days_to_failure != null && <EtaBar days={v.days_to_failure} severity={v.severity} />}
                         </>
                       ) : (
                         <span className="text-fg-subtle">—</span>
@@ -133,6 +189,7 @@ export default function FleetMonitoring() {
           </div>
           <p className="-mx-5 -mb-5 border-t border-border px-5 py-2.5 text-caption text-fg-muted">
             {pluralize(page.total ?? vehicles.length, "vehicle")}
+            {shown.length !== vehicles.length && ` · showing ${shown.length}`}
           </p>
         </Card>
 
@@ -141,6 +198,84 @@ export default function FleetMonitoring() {
 
       {can("prediction:read") && <ModelPerformance />}
     </div>
+  );
+}
+
+const BAND_LABEL = { all: "All", urgent: "Urgent", watch: "To watch", healthy: "Healthy" };
+const TONE_BG = { P1: "bg-p1", P2: "bg-p2", P3: "bg-p3" };
+
+/** How much time is left on a flagged part, as a bar: a month or more is full,
+ *  and an urgent one is a short red stub. Decoration — the days are in the text. */
+function EtaBar({ days, severity }) {
+  const pct = Math.max(6, Math.min(100, (days / 30) * 100));
+  return (
+    <div aria-hidden className="mt-1.5 h-1 w-24 overflow-hidden rounded-full bg-border">
+      <div className={`stat-line h-full rounded-full ${TONE_BG[severity] ?? "bg-p3"}`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+/**
+ * The fleet's shape and its clock: a stacked bar of how many are urgent, to
+ * watch or healthy, and under it each flagged vehicle as a bar of days left on
+ * its part, soonest first. It answers the question a fleet owner opens this page
+ * to ask — what fails next, and how soon — without reading a table. A row selects
+ * that vehicle, the same as clicking it in the list.
+ */
+function FailureHorizon({ vehicles, counts, selected, onSelect }) {
+  const rows = vehicles
+    .filter((v) => v.days_to_failure != null)
+    .sort((a, b) => a.days_to_failure - b.days_to_failure)
+    .slice(0, 8);
+  if (rows.length === 0) return null;
+  const total = Math.max(1, counts.all);
+
+  return (
+    <Card title="Failure horizon" subtitle="Days until each flagged part is predicted to fail — soonest first">
+      <div
+        aria-hidden
+        className="flex h-2.5 overflow-hidden rounded-full bg-border"
+      >
+        <div className="stat-line bg-p1" style={{ width: `${(counts.urgent / total) * 100}%` }} />
+        <div className="stat-line bg-p2" style={{ width: `${(counts.watch / total) * 100}%` }} />
+        <div className="stat-line bg-ok" style={{ width: `${(counts.healthy / total) * 100}%` }} />
+      </div>
+
+      <ul className="mt-4 space-y-0.5">
+        {rows.map((v) => {
+          const pct = Math.max(3, Math.min(100, (v.days_to_failure / 30) * 100));
+          return (
+            <li key={v.vin}>
+              <button
+                type="button"
+                onClick={() => onSelect(v.vin)}
+                aria-label={`${v.model}: ${(v.component ?? "a part").replace(/_/g, " ")} in about ${pluralize(Math.round(v.days_to_failure), "day")}`}
+                className={`grid w-full grid-cols-[120px_minmax(0,1fr)_64px] items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-surface-inset ${
+                  selected === v.vin ? "bg-surface-inset" : ""
+                }`}
+              >
+                <span className="truncate text-label font-medium text-fg-secondary">{v.model}</span>
+                <span aria-hidden className="relative h-4 rounded-full bg-border/60">
+                  <span className={`stat-line absolute inset-y-0 left-0 rounded-full ${TONE_BG[v.severity] ?? "bg-p3"}`} style={{ width: `${pct}%` }} />
+                  <span
+                    className={`absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-surface-card ${TONE_BG[v.severity] ?? "bg-p3"}`}
+                    style={{ left: `calc(${pct}% - 6px)` }}
+                  />
+                </span>
+                <span className="num text-right text-label text-fg-muted">{`${Math.round(v.days_to_failure)} d`}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* The axis: today on the left, a month out on the right. */}
+      <div aria-hidden className="mt-1 grid grid-cols-[120px_minmax(0,1fr)_64px] gap-3 px-2 text-caption text-fg-subtle">
+        <span />
+        <span className="flex justify-between"><span>today</span><span>1 week</span><span>2 weeks</span><span>3 weeks</span><span>30 days+</span></span>
+        <span />
+      </div>
+    </Card>
   );
 }
 
@@ -253,6 +388,7 @@ function VehicleDetail({ vin, canTrigger }) {
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const { night } = useThemeMode();
 
   useEffect(() => {
     setData(null);
@@ -280,6 +416,7 @@ function VehicleDetail({ vin, canTrigger }) {
   if (!data) return <Card title="Vehicle"><Empty>Loading {vin}…</Empty></Card>;
 
   const { vehicle, series, predictions, maintenance_history, dtc_codes } = data;
+  const flagged = predictions.find((p) => p.severity) ?? null;
 
   return (
     <div className="space-y-5">
@@ -335,6 +472,24 @@ function VehicleDetail({ vin, canTrigger }) {
             )}
           </div>
         )}
+      </Card>
+
+      {/* The vehicle as a 3D twin, the flagged part glowing where it is. It is a
+          generic model, so it shows which part, not the exact body. */}
+      <Card
+        title="Digital twin"
+        subtitle={flagged ? `${flagged.component.replace(/_/g, " ")} is the part to watch` : "Nothing flagged — every part is watched"}
+        className="overflow-hidden"
+      >
+        <div aria-hidden>
+          <TwinScene
+            key={night ? "night" : "day"}
+            className="-mx-5 -mb-5 h-[300px]"
+            part={flagged?.component ?? null}
+            severity={flagged?.severity ?? null}
+            caption={flagged ? `${flagged.component.replace(/_/g, " ")}${flagged.days_to_failure != null ? ` · ~${Math.round(flagged.days_to_failure)} d` : ""}` : ""}
+          />
+        </div>
       </Card>
 
       <Card title="Telemetry" subtitle="Coolant temp (°C) and battery voltage (V), last 4h">
