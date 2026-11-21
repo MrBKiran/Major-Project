@@ -126,6 +126,33 @@ export default function PlantDashboard() {
 /** The headline argument: this cluster is real, here's why, here's the
  * drafted ticket. Needs capa:draft — Quality Engineer and Quality Manager,
  * not the read-only OEM Fleet Analyst. */
+/**
+ * The batch, unit by unit: one dot per vehicle built in it, red where the part
+ * has been replaced. Seven red dots among forty-six says "a cluster" faster
+ * than 15.2% does. They are sorted (failures first) rather than scattered,
+ * because the data says how many, not which — a scatter would invent a pattern.
+ */
+function CohortDots({ failures, size }) {
+  return (
+    <div className="mt-4">
+      <p className="mb-2 text-label text-fg-muted">
+        The batch, unit by unit — each dot is a vehicle; red ones have had the part replaced
+      </p>
+      <div role="img" aria-label={`${failures} of ${size} units in this batch affected`} className="flex flex-wrap gap-1.5">
+        {Array.from({ length: size }, (_, i) => (
+          <span
+            key={i}
+            className={`animate-in h-3 w-3 rounded-full ${
+              i < failures ? "bg-p1 shadow-[0_0_8px_var(--color-p1)]" : "bg-border-strong/40"
+            }`}
+            style={{ animationDelay: `${i * 18}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CapaDraft() {
   const { can } = useAuth();
   const canDispatch = can("capa:dispatch");
@@ -193,6 +220,8 @@ function CapaDraft() {
           { value: inr(d.projected_savings_inr), label: "Warranty cost avoided",
             sub: `${d.units_at_risk} units still at risk`, tone: "good" },
         ]} />
+
+        <CohortDots failures={c.failures} size={c.cohort_size} />
 
         <p className="mt-4 rounded-lg border border-ok/25 bg-ok/5 px-4 py-2.5 text-body-sm text-fg-secondary">
           <span className="font-semibold text-ok">Corrected for multiple comparisons.</span>{" "}

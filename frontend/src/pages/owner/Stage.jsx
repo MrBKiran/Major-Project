@@ -21,6 +21,7 @@ import { color } from "@autosaarthi/tokens";
 import { useLayoutEffect, useRef } from "react";
 import { gsap, reducedMotion, TwinScene } from "../../fx";
 import { MONO, SANS, tokens } from "../../device.jsx";
+import { useThemeMode } from "../../theme.jsx";
 
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const RADIUS = 46;
@@ -32,7 +33,7 @@ const CIRC = 2 * Math.PI * RADIUS;
  * number inside counts up as the ring draws.
  */
 export function HealthRing({ days = null, horizon = 30, severity = null, booked = false, diameter = 112 }) {
-  const t = tokens(false);
+  const t = tokens(useThemeMode().night);
   const arc = useRef(null);
   const num = useRef(null);
   const fraction = days == null ? 1 : Math.max(0.04, Math.min(1, days / horizon));
@@ -87,7 +88,8 @@ export function HealthRing({ days = null, horizon = 30, severity = null, booked 
 }
 
 export function OwnerStage({ detail, top, booked = false, onOpenWhy }) {
-  const t = tokens(false);
+  const { night } = useThemeMode();
+  const t = tokens(night);
   const model = detail?.vehicle?.model ?? "car";
   const days = top?.days_to_failure ?? null;
   const flagged = !booked && top ? top : null;
@@ -122,7 +124,9 @@ export function OwnerStage({ detail, top, booked = false, onOpenWhy }) {
         </span>
       </div>
 
+      {/* Keyed by theme: the 3D scene reads its colours once, so a switch rebuilds it. */}
       <TwinScene
+        key={night ? "night" : "day"}
         className="relative h-[400px] w-full"
         part={flagged?.component ?? null}
         severity={flagged?.severity ?? null}

@@ -133,6 +133,7 @@ export default function SecurityConsole() {
                   </button>
                 )}
               </div>
+              <PolicyBar agent={a} />
               <PolicyCounts agent={a} />
               {/* A fixed slot, so the counts line up whatever the badge says. */}
               <span className="flex w-20 justify-end">
@@ -169,6 +170,23 @@ export default function SecurityConsole() {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+/** The shape of an agent's permissions: what it may call (green), what is
+ *  explicitly denied (red) and what is rate-limited (amber), as one bar. The
+ *  counts beside it stay as text; this is only for seeing the agents compared. */
+function PolicyBar({ agent }) {
+  const allow = agent.allow.length;
+  const deny = agent.deny.length;
+  const limits = Object.keys(agent.rate_limits).length;
+  const total = Math.max(1, allow + deny + limits);
+  return (
+    <div aria-hidden className="flex h-2 w-40 shrink-0 overflow-hidden rounded-full bg-border">
+      <span className="stat-line bg-ok" style={{ width: `${(allow / total) * 100}%` }} />
+      <span className="stat-line bg-p1" style={{ width: `${(deny / total) * 100}%` }} />
+      <span className="stat-line bg-p2" style={{ width: `${(limits / total) * 100}%` }} />
     </div>
   );
 }

@@ -80,7 +80,9 @@ export default function Road3D({ className = "", onUnsupported }) {
     const roadCol = token("--color-chrome", "gray");
     const edgeCol = token("--color-border-strong", "gray");
     const buildingCol = token("--color-border", "silver");
-    const carCol = token("--color-device-ring", "black");
+    // Same bezel-dark car by day; at night a mid grey so it does not vanish into the ground.
+    const nightPage = document.documentElement.dataset.theme === "night";
+    const carCol = token(nightPage ? "--color-border-strong" : "--color-device-ring", "black");
     const glassCol = token("--color-fg-subtle", "gray");
     const plateCol = token("--color-surface-card", "white");
     const poleCol = token("--color-fg-decorative", "gray");

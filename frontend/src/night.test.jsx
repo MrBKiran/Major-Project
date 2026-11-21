@@ -65,13 +65,13 @@ describe("owner app at night", () => {
     expect(card.style.background).toBe(rgb(day.card));
   });
 
-  it("keeps the console's phone preview light whatever the system says", async () => {
-    // The preview sits inside the light console and is what the demo slides show.
+  it("follows the app theme in the web layout too, not only on a phone", async () => {
+    // It used to be pinned light inside the console, so choosing dark gave a
+    // dark page around a white card.
     systemPrefersDark(true);
     render(<OwnerApp />);
     const card = (await screen.findByText(/everything reads normal/i)).closest("div[style*='border']");
-    expect(card.style.background).toBe(rgb(day.card));
-    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(card.style.background).toBe(rgb(nightTokens.card));
   });
 });
 

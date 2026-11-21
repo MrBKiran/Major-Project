@@ -23,16 +23,17 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { color } from "@autosaarthi/tokens";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { NightProvider, useNight, usePageTheme, useSystemNight } from "../night.jsx";
+import { NightProvider, useNight, usePageTheme } from "../night.jsx";
+import { useThemeMode } from "../theme.jsx";
 import {
   alertBadge, componentLabel, componentSignal, confidence, drivingLeft, formatDate, formatINR,
   formatSlot as formatSlotTime, OWNER, SIGNALS, signalLabel, trendSentence, wearingOut,
 } from "@autosaarthi/core";
 import {
-  ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill, PhoneFrame,
-  PhoneStatusBar, PrimaryButton, SANS, Spark, tokens,
+  ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill,
+  PrimaryButton, SANS, Spark, tokens,
 } from "../device.jsx";
-import { gsap, reducedMotion, Tilt } from "../fx";
+import { gsap, reducedMotion } from "../fx";
 import { HealthRing, OwnerStage } from "./owner/Stage.jsx";
 
 /** Readings taken with the ignition off are not evidence of wear — the backend's
@@ -66,10 +67,10 @@ function costRows(economics) {
  */
 export default function OwnerApp({ standalone = false }) {
   const { logout } = useAuth();
-  // The phone follows its own light/dark setting; the console's preview of it
-  // stays light, inside the light console the demo slides are taken from.
-  const systemNight = useSystemNight();
-  const night = standalone && systemNight;
+  // Light or dark is the app's one theme choice (theme.jsx), on a phone and in
+  // the browser alike. The console's preview used to be pinned light, so an owner
+  // who chose dark got a dark page around a white card.
+  const { night } = useThemeMode();
   usePageTheme(standalone ? night : undefined);
   const [vin, setVin] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -124,7 +125,14 @@ export default function OwnerApp({ standalone = false }) {
   ) : !detail ? (
     <LoadingPane />
   ) : screen === "home" ? (
-    <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen} ring={standalone} />
+    standalone ? (
+      <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen} ring />
+    ) : (
+      <HomeWeb
+        detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen}
+        onOpenWhy={() => top && setScreen("why")}
+      />
+    )
   ) : screen === "why" ? (
     <WhyThisPart detail={detail} top={top} economics={economics} back={() => setScreen("home")} go={setScreen} />
   ) : screen === "agent" ? (
@@ -178,33 +186,41 @@ export default function OwnerApp({ standalone = false }) {
   }
 
   return (
-    <NightProvider value={false}>
-    <div className="mx-auto max-w-[1100px] space-y-4 py-2">
-      <p className="px-1 text-label text-fg-muted">
-        Owner app · individual owners only. Same live data as the console, shaped for one decision.
-      </p>
-
-      {/* The car is the hero: a 3D twin of it on the left, the decision on the
-          right. On a narrow window they stack, twin first. */}
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_auto]">
-        {detail && !error && (
+    <NightProvider value={night}>
+    <div className="mx-auto max-w-[1280px]">
+      {!detail || error ? (
+        <WebPanel>{body}</WebPanel>
+      ) : screen === "home" ? (
+        // The dashboard: the car, the decision, the readings, the history.
+        body
+      ) : (
+        // A detail view keeps the car in sight: twin on the left, the work on the right.
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]">
           <OwnerStage
             detail={detail} top={top} booked={Boolean(shownBooking?.booked)}
             onOpenWhy={() => top && setScreen("why")}
           />
-        )}
-        <Tilt max={3} className="mx-auto">
-          <PhoneFrame statusBar={<PhoneStatusBar night={night} time="9:16" right="LTE  84%" />}>
-            {body}
-          </PhoneFrame>
-        </Tilt>
-      </div>
+          <div className="space-y-3">
+            <nav aria-label="Breadcrumb" className="flex items-center gap-2 px-1 text-label text-fg-muted">
+              <button type="button" onClick={() => setScreen("home")} className="rounded transition-colors hover:text-fg-secondary">
+                My car
+              </button>
+              <span aria-hidden>/</span>
+              <span aria-current="page" className="font-medium text-fg-strong">{CRUMBS[screen]}</span>
+            </nav>
+            <WebPanel>{body}</WebPanel>
+          </div>
+        </div>
+      )}
     </div>
     </NightProvider>
   );
 }
 
 /* ── chrome ──────────────────────────────────────────────────────────────── */
+
+/** What each detail view is called in the breadcrumb. */
+const CRUMBS = { why: "Evidence", agent: "Agent chat", booked: "Receipt", history: "All visits" };
 
 /** A screen's entrance: it swings in on its hinge, in perspective. GSAP removes
  *  its inline transform when it lands, so nothing stays rotated or becomes a
@@ -221,6 +237,21 @@ function ScreenFlip({ back = false, children }) {
     });
     return () => tween.kill();
   }, [back]);
+  return <div ref={ref}>{children}</div>;
+}
+
+/** Reveals its content with a left-to-right wipe, so an evidence chart looks
+ *  drawn rather than dropped in. A wrapper of its own because the screen that
+ *  uses it returns early, and an effect cannot sit after that. */
+function Wipe({ children }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    if (!ref.current || reducedMotion()) return undefined;
+    const tween = gsap.from(ref.current, {
+      clipPath: "inset(0 100% 0 0)", duration: 1.3, delay: 0.25, ease: "power2.out", clearProps: "clipPath",
+    });
+    return () => tween.kill();
+  }, []);
   return <div ref={ref}>{children}</div>;
 }
 
@@ -294,23 +325,9 @@ function Home({ detail, top, economics, booking, go, ring = false }) {
   const t = tokens(night);
   const v = detail.vehicle;
   const history = detail.maintenance_history || [];
-  const root = useRef(null);
-
-  // The timeline draws itself: the rail grows down, then each visit slides in.
-  useLayoutEffect(() => {
-    if (!root.current || reducedMotion()) return undefined;
-    const ctx = gsap.context(() => {
-      gsap.from(".tl-rail", { scaleY: 0, transformOrigin: "top", duration: 0.9, ease: "power3.out" });
-      gsap.from(".tl-node", {
-        opacity: 0, x: -14, stagger: 0.12, duration: 0.6, delay: 0.2, ease: "power3.out",
-        clearProps: "opacity,transform",
-      });
-    }, root);
-    return () => ctx.revert();
-  }, []);
 
   return (
-    <div ref={root} style={{ padding: "6px 18px 28px" }}>
+    <div style={{ padding: "6px 18px 28px" }}>
       <div style={{ paddingTop: 10, paddingBottom: 18 }}>
         <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>{v.model}</div>
         <Meta night={night} mono>
@@ -329,41 +346,160 @@ function Home({ detail, top, economics, booking, go, ring = false }) {
       {/* Timeline rail — the deck's spine. The now-card above is the newest
           node; everything below is what already happened. No tabs. */}
       <div style={{ marginTop: 26 }}>
-        <Meta night={night}>Timeline</Meta>
-        <div style={{ marginTop: 12, position: "relative", paddingLeft: 18 }}>
-          <div className="tl-rail" style={{
-            position: "absolute", left: 4, top: 6, bottom: 6, width: 2,
-            background: t.edge, borderRadius: 2,
-          }} />
-          {history.length === 0 && (
-            <TimelineNode
-              dot={t.faint} title="Vehicle registered"
-              sub="No service visits on record yet."
-            />
-          )}
-          {history.slice(0, 4).map((h, i) => (
-            <TimelineNode
-              key={i} dot={t.faint}
-              title={cap(String(h.service_type || "service").replace(/_/g, " "))}
-              sub={[
-                h.date ? formatDate(h.date) : null,
-                h.km_at_service ? `${Number(h.km_at_service).toLocaleString("en-IN")} km` : null,
-                h.cost ? inr(h.cost) : null,
-              ].filter(Boolean).join(" · ")}
-            />
-          ))}
-        </div>
-        {history.length > 0 && (
-          <button
-            onClick={() => go("history")}
-            style={{
-              marginTop: 10, border: "none", background: "transparent", padding: 0,
-              fontFamily: SANS, fontSize: 13, color: tokens(night).link, cursor: "pointer", fontWeight: 500,
-            }}
-          >
-            All service history →
-          </button>
+        <Timeline history={history} go={go} heading />
+      </div>
+    </div>
+  );
+}
+
+/** The visits so far, on a rail that draws itself: the rail grows down, then
+ *  each visit slides in. Shared by the phone's Home and the web dashboard. */
+function Timeline({ history, go, heading = false }) {
+  const night = useNight();
+  const t = tokens(night);
+  const root = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!root.current || reducedMotion()) return undefined;
+    const ctx = gsap.context(() => {
+      gsap.from(".tl-rail", { scaleY: 0, transformOrigin: "top", duration: 0.9, ease: "power3.out" });
+      gsap.from(".tl-node", {
+        opacity: 0, x: -14, stagger: 0.12, duration: 0.6, delay: 0.2, ease: "power3.out",
+        clearProps: "opacity,transform",
+      });
+    }, root);
+    return () => ctx.revert();
+  }, []);
+
+  return (
+    <div ref={root}>
+      {heading && <Meta night={night}>Timeline</Meta>}
+      <div style={{ marginTop: heading ? 12 : 0, position: "relative", paddingLeft: 18 }}>
+        <div className="tl-rail" style={{
+          position: "absolute", left: 4, top: 6, bottom: 6, width: 2,
+          background: t.edge, borderRadius: 2,
+        }} />
+        {history.length === 0 && (
+          <TimelineNode
+            dot={t.faint} title="Vehicle registered"
+            sub="No service visits on record yet."
+          />
         )}
+        {history.slice(0, 4).map((h, i) => (
+          <TimelineNode
+            key={i} dot={t.faint}
+            title={cap(String(h.service_type || "service").replace(/_/g, " "))}
+            sub={[
+              h.date ? formatDate(h.date) : null,
+              h.km_at_service ? `${Number(h.km_at_service).toLocaleString("en-IN")} km` : null,
+              h.cost ? inr(h.cost) : null,
+            ].filter(Boolean).join(" · ")}
+          />
+        ))}
+      </div>
+      {history.length > 0 && (
+        <button
+          onClick={() => go("history")}
+          style={{
+            marginTop: 10, border: "none", background: "transparent", padding: 0,
+            fontFamily: SANS, fontSize: 13, color: tokens(night).link, cursor: "pointer", fontWeight: 500,
+          }}
+        >
+          All service history →
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── the web dashboard ───────────────────────────────────────────────────── */
+
+/** A titled panel on the dashboard — a card on a web page, not a phone screen. */
+function WebPanel({ title, children, className = "" }) {
+  return (
+    <section className={`spot tilt-soft overflow-hidden rounded-2xl border border-border bg-surface-card ${className}`}>
+      {title && (
+        <header className="border-b border-border px-5 py-3.5">
+          <h2 className="text-body font-semibold text-fg-strong">{title}</h2>
+        </header>
+      )}
+      <div>{children}</div>
+    </section>
+  );
+}
+
+const fmtReading = (v) => (typeof v === "number" ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)) : "—");
+
+/** The six readings the agent watches, each with its latest value and a trace. */
+function SignalsGrid({ detail }) {
+  const night = useNight();
+  const t = tokens(night);
+  const series = liveRows(detail.series);
+  const signals = ["coolant_temp", "lub_oil_pressure", "battery_voltage", "fuel_pressure", "brake_fluid_pct", "speed"];
+  if (series.length < 2) {
+    return (
+      <p style={{ fontFamily: SANS, fontSize: 13, color: t.dim, margin: 0, padding: 20 }}>
+        No recent readings from the car — it reports again when the engine is on.
+      </p>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18, padding: 20 }}>
+      {signals.map((s) => {
+        const values = series.map((r) => r[s]);
+        const latest = [...values].reverse().find((x) => typeof x === "number");
+        return (
+          <div key={s}>
+            <Meta night={night}>{signalLabel(s)}</Meta>
+            <div style={{ fontFamily: MONO, fontSize: 15, color: t.ink, margin: "2px 0 6px" }}>
+              {fmtReading(latest)}{SIGNALS[s]?.unit ?? ""}
+            </div>
+            <Spark night={night} w={120} h={30} values={values} tone={tokens(night).icon} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Home as a web dashboard: the 3D twin and the decision side by side, the live
+ *  readings and the history below. Uses the same cards as the phone, so a
+ *  sentence or a figure is never worded two ways. */
+function HomeWeb({ detail, top, economics, booking, go, onOpenWhy }) {
+  const night = useNight();
+  const t = tokens(night);
+  const v = detail.vehicle;
+  const history = detail.maintenance_history || [];
+  const booked = Boolean(booking?.booked);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(380px,1fr)]">
+        <OwnerStage detail={detail} top={top} booked={booked} onOpenWhy={onOpenWhy} />
+        <WebPanel>
+          <div style={{ padding: "20px 20px 22px" }}>
+            <div style={{ paddingBottom: 16 }}>
+              <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>{v.model}</div>
+              <Meta night={night} mono>
+                {v.vin} · {Number(v.odometer || 0).toLocaleString("en-IN")} km
+              </Meta>
+            </div>
+            {booked ? (
+              <BookedCard booking={booking} onOpen={() => go("booked")} />
+            ) : top ? (
+              <NowCard top={top} economics={economics} go={go} />
+            ) : (
+              <HealthyCard detail={detail} signals={false} />
+            )}
+          </div>
+        </WebPanel>
+      </div>
+
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <WebPanel title="Live readings"><SignalsGrid detail={detail} /></WebPanel>
+        <WebPanel title="Service history">
+          <div style={{ padding: 20 }}><Timeline history={history} go={go} /></div>
+        </WebPanel>
       </div>
     </div>
   );
@@ -386,7 +522,7 @@ function TimelineNode({ title, sub, dot }) {
 
 /** The quiet screen. One sentence, one number pair, ten flat sparklines —
  *  visible proof the system is watching without asking anything of the owner. */
-export function HealthyCard({ detail }) {
+export function HealthyCard({ detail, signals: showSignals = true }) {
   const night = useNight();
   const t = tokens(night);
   const series = liveRows(detail.series);
@@ -399,7 +535,7 @@ export function HealthyCard({ detail }) {
           body="Signals watched continuously. No trouble codes, no wear trend worth telling you about." />
       </div>
       <div style={{ marginTop: 14 }}><Heartbeat /></div>
-      {series.length < 2 ? (
+      {!showSignals ? null : series.length < 2 ? (
         // Six empty sparklines read as a page still loading, on the one screen
         // whose message is "nothing is wrong" — say plainly what is missing.
         <p style={{
@@ -579,7 +715,7 @@ function WhyThisPart({ detail, top, economics, back, go }) {
               marginTop: 18, border: `1px solid ${t.edge}`, borderRadius: 14,
               padding: 16, background: t.card,
             }}>
-              <Spark night={night} w={340} h={64} values={values} tone={ACCENT} />
+              <Wipe><Spark night={night} w={340} h={64} values={values} tone={ACCENT} /></Wipe>
               <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
                 <Meta night={night}>
                   {cap(evidence.name)} · last 24 h
@@ -910,10 +1046,24 @@ function History({ detail, back }) {
   const night = useNight();
   const t = tokens(night);
   const rows = detail.maintenance_history || [];
+  const root = useRef(null);
+
+  // Visits rise in one after another, newest first.
+  useLayoutEffect(() => {
+    if (!root.current || reducedMotion()) return undefined;
+    const ctx = gsap.context(() => {
+      gsap.from(".hist-row", {
+        opacity: 0, y: 22, rotationX: 12, transformPerspective: 800, stagger: 0.09, duration: 0.6,
+        ease: "power3.out", clearProps: "opacity,transform,transformPerspective",
+      });
+    }, root);
+    return () => ctx.revert();
+  }, []);
+
   return (
     <>
       <ScreenHeader title="Service history" back={back} />
-      <div style={{ padding: "18px 18px 28px" }}>
+      <div ref={root} style={{ padding: "18px 18px 28px" }}>
         {rows.length === 0 ? (
           <p style={{ fontFamily: SANS, fontSize: 14, color: t.dim }}>
             No service visits on record for this vehicle yet.
@@ -921,7 +1071,7 @@ function History({ detail, back }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {rows.map((h, i) => (
-              <div key={i} style={{
+              <div key={i} className="hist-row" style={{
                 border: `1px solid ${t.edge}`, borderRadius: 14, padding: 15, background: t.card,
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>

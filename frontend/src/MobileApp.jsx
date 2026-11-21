@@ -17,12 +17,13 @@ import { useAuth } from "./auth/AuthContext.jsx";
 import Login from "./pages/Login.jsx";
 import OwnerApp from "./pages/OwnerApp.jsx";
 import { tokens, SANS } from "./device.jsx";
-import { usePageTheme, useSystemNight } from "./night.jsx";
+import { usePageTheme } from "./night.jsx";
+import { useThemeMode } from "./theme.jsx";
 
 export default function MobileApp() {
   const { status, principal, logout } = useAuth();
   // The whole of /app — sign-in included — follows the phone's light/dark setting.
-  const night = useSystemNight();
+  const { night } = useThemeMode();
   usePageTheme(night);
   const t = tokens(night);
 

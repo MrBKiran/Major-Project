@@ -4,7 +4,7 @@
  * without anyone having to remember which folder a Card lives in.
  */
 
-import { chart, day } from "@autosaarthi/tokens";
+import { chart } from "@autosaarthi/tokens";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { gsap, reducedMotion } from "./fx/gsap.js";
@@ -24,14 +24,18 @@ export const SEVERITY = {
  * made the earlier charts look like they belonged to a different app.
  */
 export const CHART = {
-  grid: chart.grid,
-  axis: chart.axis,
+  // CSS variables, not the literal day values: SVG attributes and inline styles
+  // accept var(), so the chart follows the app's theme with no re-render and no
+  // second palette to keep in step. Night values for the grid and axis are in
+  // index.css; the card, border and text are the ordinary night tokens.
+  grid: "var(--color-chart-grid)",
+  axis: "var(--color-chart-axis)",
   tooltip: {
-    background: day.card,
-    border: `1px solid ${day.border}`,
+    background: "var(--color-surface-card)",
+    border: "1px solid var(--color-border)",
     borderRadius: 10,
     fontSize: 12,
-    color: day.fg,
+    color: "var(--color-fg)",
     boxShadow: "0 8px 24px -12px rgba(0,0,0,0.25)",
   },
   // Series stay saturated enough to carry meaning against white; the token
@@ -72,10 +76,11 @@ export function Card({ title, subtitle, right, children, className = "", interac
       } ${className}`}
     >
       {(title || right) && (
-        <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-3.5">
+        <header className="flex items-start justify-between gap-4 border-b border-border bg-gradient-to-b from-surface-inset/70 to-transparent px-5 py-3.5">
           <div>
             {title && (
-              <h2 className="text-body font-semibold text-fg-strong">
+              <h2 className="flex items-center gap-2 text-body font-semibold text-fg-strong">
+                <span aria-hidden className="h-3.5 w-1 rounded-full bg-accent" />
                 {title}
               </h2>
             )}
@@ -142,10 +147,14 @@ function StatItem({ value, label, sub, tone = "default", bare }) {
       bare ? "py-1 pr-5 md:not-first:pl-5" : "px-5 py-3.5 hover:bg-surface-inset/50"
     }`}>
       {!bare && (
-        <span aria-hidden className={`stat-line absolute inset-x-5 top-0 h-0.5 rounded-b ${LINES[tone]} opacity-70 transition-opacity duration-200 group-hover:opacity-100`} />
+        <>
+          <span aria-hidden className={`stat-line absolute inset-x-5 top-0 h-0.5 rounded-b ${LINES[tone]} opacity-70 transition-opacity duration-200 group-hover:opacity-100`} />
+          {/* A soft glow in the figure's tone, so a row of figures reads as a row of states. */}
+          <span aria-hidden className={`pointer-events-none absolute -right-5 -top-7 h-20 w-20 rounded-full blur-2xl transition-opacity duration-300 ${LINES[tone]} opacity-15 group-hover:opacity-30`} />
+        </>
       )}
-      <dt className="text-label text-fg-muted">{label}</dt>
-      <dd className={`num mt-1 text-title font-semibold leading-none ${TONES[tone]}`}>
+      <dt className="relative text-label text-fg-muted">{label}</dt>
+      <dd className={`num relative mt-1 font-semibold leading-none ${bare ? "text-title" : "text-display"} ${TONES[tone]}`}>
         {shown}
         {sub && <span className="mt-1.5 block text-caption font-normal text-fg-muted">{sub}</span>}
       </dd>
