@@ -1,0 +1,17 @@
+# One line-ending style on every machine. Without this, Git for Windows
+# (core.autocrlf=true) checks files out with CRLF, and tests that compare a
+# generated file byte-for-byte (packages/tokens: tokens.css) fail on a
+# fresh Windows checkout even though nothing is wrong.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
+*.joblib binary
+*.glb binary
+*.gltf text
