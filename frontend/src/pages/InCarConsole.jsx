@@ -30,6 +30,7 @@ import {
   serviceDue, severityWord, wearingOut,
 } from "@autosaarthi/core";
 import { Tilt } from "../fx";
+import { useThemeMode } from "../theme.jsx";
 import { Empty, Skeleton } from "../ui.jsx";
 import {
   CarDock, CarFrame, CarStatusBar, CostRows, GhostButton, Headline, MapPane,
@@ -76,7 +77,9 @@ function basisText(drive) {
 export default function InCarConsole() {
   const [fleet, setFleet] = useState(null);
   const [vin, setVin] = useState(null);
-  const [night, setNight] = useState(false);
+  // The head unit follows the app's theme: it used to have a private Day/Night
+  // switch that turned only this mock dark, which read as a broken theme.
+  const { night } = useThemeMode();
   const clock = useClock();
   const [carScreen, setCarScreen] = useState(null);
   const [screenError, setScreenError] = useState(null);
@@ -197,13 +200,7 @@ export default function InCarConsole() {
           <span className="text-caption text-fg-muted">Drive state as reported by the car</span>
         )}
 
-        <button
-          onClick={() => setNight((n) => !n)}
-          aria-pressed={night}
-          className="rounded-lg border border-border bg-surface-inset/40 px-2.5 py-1.5 text-label text-fg-tertiary transition hover:border-fg-subtle"
-        >
-          {night ? "Night" : "Day"}
-        </button>
+        <span className="text-caption text-fg-muted">Head unit follows the app theme</span>
 
         <span className="ml-auto text-caption text-fg-muted" role="status">
           {controlError || (carScreen ? "Drawn from the server's car screen" : "Asking the server…")}

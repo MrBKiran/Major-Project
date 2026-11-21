@@ -40,11 +40,20 @@ export function useSystemNight() {
 // saved previous value: React runs a child's effect before its parent's, so a
 // child "restoring what was there" restores the state before its parent ran.
 let nightHolders = 0;
+// The whole app's chosen theme (theme.jsx). Separate from the holder count so a
+// phone route asking for night and the user choosing dark are both honoured.
+let globalNight = false;
 
 function applyPageTheme() {
   const root = document.documentElement;
-  if (nightHolders > 0) root.dataset.theme = "night";
+  if (nightHolders > 0 || globalNight) root.dataset.theme = "night";
   else delete root.dataset.theme;
+}
+
+/** Set by the theme provider: the app as a whole is in night mode. */
+export function setGlobalNight(value) {
+  globalNight = Boolean(value);
+  if (typeof document !== "undefined") applyPageTheme();
 }
 
 /** Keeps the page itself in night mode while any caller passes true. /app and

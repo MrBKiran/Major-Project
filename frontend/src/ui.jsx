@@ -4,7 +4,7 @@
  * without anyone having to remember which folder a Card lives in.
  */
 
-import { chart, day } from "@autosaarthi/tokens";
+import { chart } from "@autosaarthi/tokens";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { gsap, reducedMotion } from "./fx/gsap.js";
@@ -24,14 +24,18 @@ export const SEVERITY = {
  * made the earlier charts look like they belonged to a different app.
  */
 export const CHART = {
-  grid: chart.grid,
-  axis: chart.axis,
+  // CSS variables, not the literal day values: SVG attributes and inline styles
+  // accept var(), so the chart follows the app's theme with no re-render and no
+  // second palette to keep in step. Night values for the grid and axis are in
+  // index.css; the card, border and text are the ordinary night tokens.
+  grid: "var(--color-chart-grid)",
+  axis: "var(--color-chart-axis)",
   tooltip: {
-    background: day.card,
-    border: `1px solid ${day.border}`,
+    background: "var(--color-surface-card)",
+    border: "1px solid var(--color-border)",
     borderRadius: 10,
     fontSize: 12,
-    color: day.fg,
+    color: "var(--color-fg)",
     boxShadow: "0 8px 24px -12px rgba(0,0,0,0.25)",
   },
   // Series stay saturated enough to carry meaning against white; the token

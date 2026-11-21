@@ -89,7 +89,10 @@ export default function CarTwin({ part = null, severity = null, caption = "", cl
     const card = token("--color-surface-card", "white");
     const chrome = token("--color-chrome", "gray");
     const edge = token("--color-border-strong", "gray");
-    const carCol = token("--color-device-ring", "black");
+    // The head unit's bezel colour is the same by day and night — dark. On a dark
+    // night page that would vanish into the ground, so at night the car is a mid grey.
+    const dark = document.documentElement.dataset.theme === "night";
+    const carCol = token(dark ? "--color-border-strong" : "--color-device-ring", "black");
     const glassCol = token("--color-fg-subtle", "gray");
 
     const scene = new THREE.Scene();

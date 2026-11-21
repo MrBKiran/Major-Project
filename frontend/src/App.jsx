@@ -20,6 +20,8 @@ import OwnerApp from "./pages/OwnerApp.jsx";
 import Account from "./pages/Account.jsx";
 import MobileApp from "./MobileApp.jsx";
 import { CommandPalette, DotGrid, gsap, reducedMotion, revealOnMount, usePaletteHotkey } from "./fx";
+import { SideNav } from "./shell/SideNav.jsx";
+import { ThemeProvider, ThemeToggle } from "./theme.jsx";
 import { BrandMark } from "./ui.jsx";
 
 const ICONS = {
@@ -106,6 +108,17 @@ function Icon({ id }) {
 
 const MOD_KEY = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl";
 
+/** One line under each page's title, so every screen says what it is for. */
+const BLURBS = {
+  owner: "Your car's health, and when it needs service",
+  fleet: "Every vehicle in your scope, most urgent first",
+  ops: "Capacity, demand forecasts and appointments",
+  console: "What the car's screen shows in each drive state",
+  plant: "Defect clusters and the CAPA draft for manufacturing",
+  security: "What each agent may do, and who tried to do more",
+  account: "Your sign-in, second factor and sessions",
+};
+
 function Shell() {
   const { principal, logout } = useAuth();
   const visibleTabs = TABS.filter((t) => tabVisible(t, principal.permissions, principal));
@@ -123,7 +136,7 @@ function Shell() {
   useLayoutEffect(() => {
     if (!headerRef.current || reducedMotion()) return undefined;
     const ctx = gsap.context(() => {
-      gsap.from("nav[aria-label='Console sections'] button", {
+      gsap.from("nav button", {
         opacity: 0, y: -14, rotationX: -50, transformPerspective: 600, stagger: 0.06,
         duration: 0.7, ease: "back.out(1.6)", clearProps: "opacity,transform,transformPerspective",
       });
@@ -145,42 +158,76 @@ function Shell() {
     { id: "act:logout", label: "Log out (all sessions)", hint: "Account", keywords: "sign out", run: logout },
   ];
 
+  const owner = principal.scope_kind === "owned";
+  const title = tab === "account" ? "Account & security" : active?.label ?? "";
+
   return (
-    <div className="min-h-full">
+    <div className="min-h-full lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
       {/* The dot field reacts to the pointer behind everything; cards sit on top. */}
       <DotGrid className="fixed inset-0 z-0 h-full w-full opacity-60" />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={commands} />
 
+      {/* Sidebar, from desktop width up. Below that the header carries the tabs. */}
+      <aside className="relative z-10 hidden border-r border-border bg-surface-panel/85 backdrop-blur-md lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col">
+        <div className="flex items-center gap-3 px-5 py-5">
+          <BrandMark className="h-9 w-9 rounded-xl" />
+          <div className="leading-tight">
+            <div className="text-lead font-bold tracking-tight text-fg-strong">AutoSaarthi</div>
+            <div className="text-caption text-fg-muted">{owner ? "My car" : "OEM Console"}</div>
+          </div>
+        </div>
+
+        <SideNav tabs={visibleTabs} active={tab} onSelect={setTab} icon={(id) => <Icon id={id} />} />
+
+        <div className="mt-auto space-y-3 px-4 pb-5">
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            aria-label="Open command palette"
+            className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface-card px-3 py-2 text-left text-label text-fg-muted transition-colors duration-200 hover:border-fg-subtle hover:text-fg-secondary"
+          >
+            <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+            </svg>
+            <span className="flex-1">Search or jump to…</span>
+            <kbd className="kbd">{MOD_KEY} K</kbd>
+          </button>
+          <ThemeToggle className="flex w-full [&>button]:flex-1" />
+        </div>
+      </aside>
+
+      <div className="min-w-0">
       <header ref={headerRef} className="sticky top-0 z-10 border-b border-border bg-surface-page/90 backdrop-blur-md">
         {/* Re-keyed by section, so it sweeps across again on every switch. */}
         <span key={tab} aria-hidden className="route-bar" />
-        <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-6 py-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4 px-6 py-3">
+          {/* Narrow windows: brand and tabs in the header, as before. */}
+          <div className="flex items-center gap-2 lg:hidden">
             <BrandMark />
-            <div className="flex items-baseline gap-2">
-              <span className="text-lead font-bold tracking-tight text-fg-strong">AutoSaarthi</span>
-              <span className="hidden text-caption text-fg-muted xl:inline">
-                {principal.scope_kind === "owned" ? "My car" : "OEM Console"}
-              </span>
-            </div>
+            <span className="hidden text-lead font-bold tracking-tight text-fg-strong sm:inline">AutoSaarthi</span>
+          </div>
+          <div className="flex min-w-0 flex-1 lg:hidden">
+            <SectionNav tabs={visibleTabs} active={tab} onSelect={setTab} />
           </div>
 
-          <SectionNav tabs={visibleTabs} active={tab} onSelect={setTab} />
+          {/* Desktop: the page's own title and what it is for. */}
+          <div className="hidden min-w-0 flex-1 lg:block">
+            <h1 className="truncate text-title-sm font-semibold text-fg-strong">{title}</h1>
+            <p className="truncate text-caption text-fg-muted">{BLURBS[tab]}</p>
+          </div>
 
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
             aria-label="Open command palette"
             title={`Jump to… (${MOD_KEY} K)`}
-            className="hidden shrink-0 items-center gap-2 rounded-lg border border-border bg-surface-card px-2.5 py-1.5 text-label text-fg-muted transition-colors duration-200 hover:border-fg-subtle hover:text-fg-secondary md:flex"
+            className="shrink-0 rounded-lg border border-border bg-surface-card p-2 text-fg-muted transition-colors duration-200 hover:border-fg-subtle hover:text-fg-secondary lg:hidden"
           >
             <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
             </svg>
-            {/* Icon-only until there is room: the tabs come first (see AccountMenu's note). */}
-            <span className="hidden min-[1600px]:inline">Jump to</span>
-            <span className="hidden min-[1600px]:inline-flex"><kbd className="kbd">{MOD_KEY} K</kbd></span>
           </button>
+          <ThemeToggle compact className="hidden sm:inline-flex lg:hidden" />
 
           <AccountMenu onAccount={() => setTab("account")} />
         </div>
@@ -204,6 +251,7 @@ function Shell() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }
@@ -425,8 +473,10 @@ const IS_MOBILE_ROUTE = typeof window !== "undefined"
 
 export default function App() {
   return (
-    <AuthProvider>
-      {IS_MOBILE_ROUTE ? <MobileApp /> : <Gate />}
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        {IS_MOBILE_ROUTE ? <MobileApp /> : <Gate />}
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

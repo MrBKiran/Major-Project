@@ -27,6 +27,7 @@ import MfaStep from "./login/MfaStep.jsx";
 import PhoneSignIn from "./login/PhoneSignIn.jsx";
 import { BrandMark } from "../ui.jsx";
 import { BlurText, DotGrid, FlipText, gsap, Magnetic, Marquee, reducedMotion, Scene, SignalChip, Tilt } from "../fx";
+import { ThemeToggle, useThemeMode } from "../theme.jsx";
 import { ErrorNote, Field, inputCls, submitCls } from "./login/parts.jsx";
 
 const METHOD_LABELS = { password: "Email", phone_otp: "Phone" };
@@ -124,6 +125,8 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 
       <div className="relative flex flex-1 items-center justify-center px-4 py-10">
         <div aria-hidden className="aurora"><i /><i /><i /></div>
+        {/* Signed out, the theme can still be chosen. */}
+        <div className="absolute right-4 top-4 z-[1]"><ThemeToggle compact /></div>
 
       <div className="animate-in relative w-full max-w-sm">
         <div className="mb-8 text-center">
@@ -283,6 +286,8 @@ const TICKER_DOT = { danger: "bg-p1", warn: "bg-p2", good: "bg-ok", info: "bg-p3
 /** The sign-in welcome for staff: the brand's road, coming at you. Decorative
  *  apart from the headline and the sentence under it. */
 function Hero() {
+  // The 3D world reads its colours once, so it is rebuilt when the theme changes.
+  const { night } = useThemeMode();
   return (
     <section
       aria-label="What AutoSaarthi does"
@@ -292,7 +297,7 @@ function Hero() {
       <div aria-hidden className="aurora"><i /><i /><i /></div>
       {/* The whole hero is the 3D world; the headline sits in its sky. Where WebGL is
           missing it falls back to the SVG road along the bottom edge. */}
-      <Scene className="absolute inset-0" fallbackClassName="absolute inset-x-0 bottom-0 h-[66%]" />
+      <Scene key={night ? "night" : "day"} className="absolute inset-0" fallbackClassName="absolute inset-x-0 bottom-0 h-[66%]" />
 
       {/* A wash of the hero's own ground colour keeps the headline legible over the skyline. */}
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[48%] bg-gradient-to-b from-surface-panel via-surface-panel/75 to-transparent" />
