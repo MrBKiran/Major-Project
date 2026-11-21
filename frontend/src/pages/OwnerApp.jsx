@@ -224,6 +224,21 @@ function ScreenFlip({ back = false, children }) {
   return <div ref={ref}>{children}</div>;
 }
 
+/** Reveals its content with a left-to-right wipe, so an evidence chart looks
+ *  drawn rather than dropped in. A wrapper of its own because the screen that
+ *  uses it returns early, and an effect cannot sit after that. */
+function Wipe({ children }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    if (!ref.current || reducedMotion()) return undefined;
+    const tween = gsap.from(ref.current, {
+      clipPath: "inset(0 100% 0 0)", duration: 1.3, delay: 0.25, ease: "power2.out", clearProps: "clipPath",
+    });
+    return () => tween.kill();
+  }, []);
+  return <div ref={ref}>{children}</div>;
+}
+
 /** A pulse that runs along a line: "the agent is watching", as a heartbeat. */
 function Heartbeat() {
   const path = useRef(null);
@@ -579,7 +594,7 @@ function WhyThisPart({ detail, top, economics, back, go }) {
               marginTop: 18, border: `1px solid ${t.edge}`, borderRadius: 14,
               padding: 16, background: t.card,
             }}>
-              <Spark night={night} w={340} h={64} values={values} tone={ACCENT} />
+              <Wipe><Spark night={night} w={340} h={64} values={values} tone={ACCENT} /></Wipe>
               <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
                 <Meta night={night}>
                   {cap(evidence.name)} · last 24 h
@@ -910,10 +925,24 @@ function History({ detail, back }) {
   const night = useNight();
   const t = tokens(night);
   const rows = detail.maintenance_history || [];
+  const root = useRef(null);
+
+  // Visits rise in one after another, newest first.
+  useLayoutEffect(() => {
+    if (!root.current || reducedMotion()) return undefined;
+    const ctx = gsap.context(() => {
+      gsap.from(".hist-row", {
+        opacity: 0, y: 22, rotationX: 12, transformPerspective: 800, stagger: 0.09, duration: 0.6,
+        ease: "power3.out", clearProps: "opacity,transform,transformPerspective",
+      });
+    }, root);
+    return () => ctx.revert();
+  }, []);
+
   return (
     <>
       <ScreenHeader title="Service history" back={back} />
-      <div style={{ padding: "18px 18px 28px" }}>
+      <div ref={root} style={{ padding: "18px 18px 28px" }}>
         {rows.length === 0 ? (
           <p style={{ fontFamily: SANS, fontSize: 14, color: t.dim }}>
             No service visits on record for this vehicle yet.
@@ -921,7 +950,7 @@ function History({ detail, back }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {rows.map((h, i) => (
-              <div key={i} style={{
+              <div key={i} className="hist-row" style={{
                 border: `1px solid ${t.edge}`, borderRadius: 14, padding: 15, background: t.card,
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
