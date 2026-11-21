@@ -105,7 +105,12 @@ export function Button({ children, onPress, kind = 'primary', disabled = false, 
         // White text sits on accentDeep (4.8:1), never on the plain accent (3.4:1).
         backgroundColor: primary ? (off ? c.control : c.accentDeep) : c.card,
         borderWidth: primary ? 0 : 1, borderColor: c.border,
-        opacity: pressed ? 0.9 : 1,
+        opacity: pressed ? 0.95 : 1,
+        // A solid lower edge gives the primary button depth; pressing sinks it onto the page.
+        transform: [{ translateY: primary && !off && pressed ? 3 : 0 }],
+        boxShadow: primary && !off
+          ? (pressed ? `0 0 0 0 ${c.accentInk}` : `0 3px 0 0 ${c.accentInk}, 0 12px 20px -12px ${c.accent}`)
+          : undefined,
       })}
     >
       {busy ? <ActivityIndicator color={primary ? c.onAccent : c.fg} accessibilityLabel="Working" />

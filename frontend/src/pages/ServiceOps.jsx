@@ -106,10 +106,10 @@ function DemandForecast() {
                 key={c.center_id}
                 aria-pressed={c.center_id === selected}
                 onClick={() => setSelected(c.center_id)}
-                className={`rounded-lg border px-3 py-2.5 text-left transition duration-150 active:scale-[0.97] ${
+                className={`spot tilt rounded-lg border px-3 py-2.5 text-left active:scale-[0.97] ${
                   selected === c.center_id
                     ? "border-accent/60 bg-surface-inset"
-                    : "border-border bg-surface-inset/40 hover:-translate-y-0.5 hover:border-fg-subtle"
+                    : "border-border bg-surface-inset/40 hover:border-fg-subtle"
                 }`}
               >
                 <div className="font-mono text-caption text-fg-muted">{c.center_id}</div>
@@ -123,6 +123,15 @@ function DemandForecast() {
                   {c.overloaded_days.length > 0 && (
                     <span className="ml-1.5 text-p1">· {c.overloaded_days.length} over</span>
                   )}
+                </div>
+                {/* Utilisation as a bar that fills in: decorative, the figure above says it. */}
+                <div aria-hidden className="mt-2 h-1 overflow-hidden rounded-full bg-border">
+                  <div
+                    className={`stat-line h-full rounded-full ${
+                      c.mean_utilisation > 0.9 ? "bg-p1" : c.mean_utilisation > 0.8 ? "bg-p2" : "bg-ok"
+                    }`}
+                    style={{ width: `${Math.min(100, c.mean_utilisation * 100)}%` }}
+                  />
                 </div>
               </button>
             ))}

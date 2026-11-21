@@ -18,7 +18,7 @@
  * something the deployment cannot do.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import GoogleButton from "../auth/GoogleButton.jsx";
@@ -26,6 +26,7 @@ import EnrollFlow from "./login/EnrollFlow.jsx";
 import MfaStep from "./login/MfaStep.jsx";
 import PhoneSignIn from "./login/PhoneSignIn.jsx";
 import { BrandMark } from "../ui.jsx";
+import { BlurText, DotGrid, FlipText, gsap, Magnetic, Marquee, reducedMotion, Scene, SignalChip, Tilt } from "../fx";
 import { ErrorNote, Field, inputCls, submitCls } from "./login/parts.jsx";
 
 const METHOD_LABELS = { password: "Email", phone_otp: "Phone" };
@@ -44,6 +45,20 @@ export default function Login({ defaultMethod = "password", surface = "console" 
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  // The card swings up out of the page in perspective once, on arrival. GSAP's
+  // clearProps removes its inline transform afterwards so the Tilt wrapper's own
+  // transform is the only one left.
+  const cardRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!cardRef.current || reducedMotion()) return undefined;
+    const tween = gsap.from(cardRef.current, {
+      opacity: 0, y: 60, rotationX: -22, transformPerspective: 1000, transformOrigin: "50% 100%",
+      duration: 1.15, delay: 0.3, ease: "expo.out",
+      clearProps: "opacity,transform,transformPerspective,transformOrigin",
+    });
+    return () => tween.kill();
+  }, []);
 
   useEffect(() => {
     api
@@ -98,13 +113,17 @@ export default function Login({ defaultMethod = "password", surface = "console" 
     setError(null);
   };
 
+  // Staff get the full welcome — the road, the headline, the ticker. The owner's
+  // phone sign-in stays a single compact column: it is a utility screen on a small
+  // display, and the hero would only push the form below the fold.
+  const showHero = surface === "console";
+
   return (
-    <div className="relative flex min-h-full items-center justify-center overflow-hidden px-4">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.07] blur-3xl"
-        style={{ background: "radial-gradient(closest-side, var(--color-accent), transparent)" }}
-      />
+    <div className={`relative flex min-h-full overflow-hidden ${showHero ? "lg:grid lg:grid-cols-[1.12fr_1fr]" : ""}`}>
+      {showHero && <Hero />}
+
+      <div className="relative flex flex-1 items-center justify-center px-4 py-10">
+        <div aria-hidden className="aurora"><i /><i /><i /></div>
 
       <div className="animate-in relative w-full max-w-sm">
         <div className="mb-8 text-center">
@@ -113,7 +132,9 @@ export default function Login({ defaultMethod = "password", surface = "console" 
           <p className="mt-1 text-body-sm text-fg-muted">{SUBTITLES[surface]}</p>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface-card/90 p-6 shadow-[0_18px_50px_-28px_rgba(0,0,0,0.25)] backdrop-blur">
+        <div ref={cardRef}>
+        <Tilt max={4} className="rounded-xl">
+        <div className="beam rounded-xl border border-border bg-surface-card/90 p-6 shadow-[0_18px_50px_-28px_rgba(0,0,0,0.25)] backdrop-blur">
           {stage.name === "credentials" && (
             <div className="space-y-4">
               {tabs.length > 1 && (
@@ -162,9 +183,11 @@ export default function Login({ defaultMethod = "password", surface = "console" 
                     />
                   </Field>
                   <ErrorNote>{error}</ErrorNote>
-                  <button type="submit" disabled={busy} className={submitCls}>
-                    {busy ? "Signing in…" : "Sign in"}
-                  </button>
+                  <Magnetic strength={0.12}>
+                    <button type="submit" disabled={busy} className={submitCls}>
+                      {busy ? "Signing in…" : "Sign in"}
+                    </button>
+                  </Magnetic>
                 </form>
               )}
 
@@ -230,12 +253,77 @@ export default function Login({ defaultMethod = "password", surface = "console" 
             </div>
           )}
         </div>
+        </Tilt>
+        </div>
 
         <p className="mt-5 text-center text-caption text-fg-subtle">
           Local demo — every seeded account uses password{" "}
           <code className="rounded bg-surface-card px-1 py-0.5 font-mono text-fg-tertiary">autosaarthi</code>
         </p>
       </div>
+      </div>
     </div>
+  );
+}
+
+// What the platform is doing, as a ticker. Illustrative — it sits on the sign-in
+// screen, before any data is loaded, so nothing here is a live reading.
+const TICKER = [
+  ["danger", "Water pump wear 82%"],
+  ["warn", "Battery voltage sag · 11.8 V"],
+  ["good", "Service slot held · Pune"],
+  ["info", "Owner call completed"],
+  ["danger", "Brake pads 14% left"],
+  ["good", "CAPA 2022-1096 matched"],
+  ["warn", "Oil pressure dipping"],
+  ["info", "Prompt injection blocked"],
+];
+const TICKER_DOT = { danger: "bg-p1", warn: "bg-p2", good: "bg-ok", info: "bg-p3" };
+
+/** The sign-in welcome for staff: the brand's road, coming at you. Decorative
+ *  apart from the headline and the sentence under it. */
+function Hero() {
+  return (
+    <section
+      aria-label="What AutoSaarthi does"
+      className="relative hidden overflow-hidden border-r border-border bg-surface-panel lg:flex lg:flex-col"
+    >
+      <DotGrid className="absolute inset-0 h-full w-full opacity-70" />
+      <div aria-hidden className="aurora"><i /><i /><i /></div>
+      {/* The whole hero is the 3D world; the headline sits in its sky. Where WebGL is
+          missing it falls back to the SVG road along the bottom edge. */}
+      <Scene className="absolute inset-0" fallbackClassName="absolute inset-x-0 bottom-0 h-[66%]" />
+
+      {/* A wash of the hero's own ground colour keeps the headline legible over the skyline. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[48%] bg-gradient-to-b from-surface-panel via-surface-panel/75 to-transparent" />
+
+      <div className="relative z-[1] px-12 pt-16 xl:px-16">
+        <FlipText text="Predict · Call · Book · Learn" className="text-label font-medium text-fg-secondary" />
+        <BlurText
+          as="p"
+          className="splash mt-3 block max-w-[15ch] text-fg-strong"
+          parts={["Fix it before it", { text: "breaks.", className: "text-accent-ink" }]}
+        />
+        <p className="mt-5 max-w-md text-lead text-fg-secondary">
+          A Master Agent watches every vehicle&apos;s telemetry, calls the owner, books the slot
+          and tells the plant what to fix.
+        </p>
+      </div>
+
+      <SignalChip tone="danger" label="Water pump · wear 82%" value="Fails in ~9 days" className="left-[7%] top-[47%]" />
+      <SignalChip tone="good" label="Slot booked · Pune" value="Tue 10:30" delay={0.4} className="right-[9%] top-[41%]" />
+      <SignalChip tone="info" label="Plant feedback" value="CAPA draft ready" delay={0.8} className="right-[17%] top-[61%]" />
+
+      <div className="relative z-[1] mt-auto pb-7">
+        <Marquee>
+          {TICKER.map(([tone, text]) => (
+            <span key={text} className="glass flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-label text-fg-secondary">
+              <span className={`h-1.5 w-1.5 rounded-full ${TICKER_DOT[tone]}`} />
+              {text}
+            </span>
+          ))}
+        </Marquee>
+      </div>
+    </section>
   );
 }
