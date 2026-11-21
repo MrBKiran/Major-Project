@@ -159,7 +159,9 @@ function Shell() {
             <BrandMark />
             <div className="flex items-baseline gap-2">
               <span className="text-lead font-bold tracking-tight text-fg-strong">AutoSaarthi</span>
-              <span className="hidden text-caption text-fg-muted xl:inline">OEM Console</span>
+              <span className="hidden text-caption text-fg-muted xl:inline">
+                {principal.scope_kind === "owned" ? "My car" : "OEM Console"}
+              </span>
             </div>
           </div>
 

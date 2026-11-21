@@ -19,7 +19,7 @@
  * and the booking are all live.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { color } from "@autosaarthi/tokens";
 import { api } from "../api.js";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -32,6 +32,8 @@ import {
   ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill, PhoneFrame,
   PhoneStatusBar, PrimaryButton, SANS, Spark, tokens,
 } from "../device.jsx";
+import { gsap, reducedMotion, Tilt } from "../fx";
+import { HealthRing, OwnerStage } from "./owner/Stage.jsx";
 
 /** Readings taken with the ignition off are not evidence of wear — the backend's
  *  `latest_reading` filters to engine-running rows before quoting a number, so
@@ -114,7 +116,7 @@ export default function OwnerApp({ standalone = false }) {
     ? upcoming
     : booking || upcoming;
 
-  const body = error ? (
+  const content = error ? (
     <div style={{ padding: 24 }}>
       <Meta night={night}>Unavailable</Meta>
       <p style={{ fontFamily: SANS, fontSize: 15, color: t.dim, marginTop: 8 }}>{error}</p>
@@ -122,7 +124,7 @@ export default function OwnerApp({ standalone = false }) {
   ) : !detail ? (
     <LoadingPane />
   ) : screen === "home" ? (
-    <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen} />
+    <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen} ring={standalone} />
   ) : screen === "why" ? (
     <WhyThisPart detail={detail} top={top} economics={economics} back={() => setScreen("home")} go={setScreen} />
   ) : screen === "agent" ? (
@@ -135,6 +137,10 @@ export default function OwnerApp({ standalone = false }) {
   ) : (
     <History detail={detail} back={() => setScreen("home")} />
   );
+
+  // Each screen swings in from the side it came from (and back out the way it
+  // came): forward moves in from the right, "back" from the left.
+  const body = <ScreenFlip key={screen} back={screen === "home"}>{content}</ScreenFlip>;
 
   if (standalone) {
     return (
@@ -173,22 +179,72 @@ export default function OwnerApp({ standalone = false }) {
 
   return (
     <NightProvider value={false}>
-    <div className="flex flex-col items-center gap-4 py-2">
-      <div className="flex w-full max-w-md items-baseline justify-between px-1">
-        <p className="text-label text-fg-muted">
-          Owner app · individual owners only. Same live data as the console, shaped for one decision.
-        </p>
-      </div>
+    <div className="mx-auto max-w-[1100px] space-y-4 py-2">
+      <p className="px-1 text-label text-fg-muted">
+        Owner app · individual owners only. Same live data as the console, shaped for one decision.
+      </p>
 
-      <PhoneFrame statusBar={<PhoneStatusBar night={night} time="9:16" right="LTE  84%" />}>
-        {body}
-      </PhoneFrame>
+      {/* The car is the hero: a 3D twin of it on the left, the decision on the
+          right. On a narrow window they stack, twin first. */}
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_auto]">
+        {detail && !error && (
+          <OwnerStage
+            detail={detail} top={top} booked={Boolean(shownBooking?.booked)}
+            onOpenWhy={() => top && setScreen("why")}
+          />
+        )}
+        <Tilt max={3} className="mx-auto">
+          <PhoneFrame statusBar={<PhoneStatusBar night={night} time="9:16" right="LTE  84%" />}>
+            {body}
+          </PhoneFrame>
+        </Tilt>
+      </div>
     </div>
     </NightProvider>
   );
 }
 
 /* ── chrome ──────────────────────────────────────────────────────────────── */
+
+/** A screen's entrance: it swings in on its hinge, in perspective. GSAP removes
+ *  its inline transform when it lands, so nothing stays rotated or becomes a
+ *  containing block for the sticky headers inside. */
+function ScreenFlip({ back = false, children }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    if (!ref.current || reducedMotion()) return undefined;
+    const dir = back ? -1 : 1;
+    const tween = gsap.from(ref.current, {
+      opacity: 0, x: dir * 38, rotationY: dir * -13, transformPerspective: 1000,
+      transformOrigin: back ? "100% 50%" : "0% 50%", duration: 0.55, ease: "power3.out",
+      clearProps: "opacity,transform,transformPerspective,transformOrigin",
+    });
+    return () => tween.kill();
+  }, [back]);
+  return <div ref={ref}>{children}</div>;
+}
+
+/** A pulse that runs along a line: "the agent is watching", as a heartbeat. */
+function Heartbeat() {
+  const path = useRef(null);
+  useLayoutEffect(() => {
+    if (!path.current || reducedMotion()) return undefined;
+    const len = path.current.getTotalLength?.() ?? 300;
+    path.current.style.strokeDasharray = `${len * 0.3} ${len}`;
+    const tween = gsap.fromTo(path.current, { strokeDashoffset: len * 0.3 },
+      { strokeDashoffset: -len, duration: 2.8, ease: "none", repeat: -1 });
+    return () => tween.kill();
+  }, []);
+  return (
+    <svg aria-hidden="true" viewBox="0 0 240 36" width="100%" height="36" preserveAspectRatio="none" style={{ display: "block" }}>
+      <path d="M0 18 H70 L78 18 L84 4 L92 32 L100 18 H150 L156 18 L162 10 L168 26 L174 18 H240"
+            fill="none" stroke={color.ok} strokeOpacity="0.28" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path ref={path} d="M0 18 H70 L78 18 L84 4 L92 32 L100 18 H150 L156 18 L162 10 L168 26 L174 18 H240"
+            fill="none" stroke={color.ok} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+            style={{ filter: `drop-shadow(0 0 4px ${color.ok})` }} />
+    </svg>
+  );
+}
 
 function LoadingPane() {
   const night = useNight();
@@ -233,14 +289,28 @@ function ScreenHeader({ title, back, right }) {
 
 /* ── P04 / P05 — home ────────────────────────────────────────────────────── */
 
-function Home({ detail, top, economics, booking, go }) {
+function Home({ detail, top, economics, booking, go, ring = false }) {
   const night = useNight();
   const t = tokens(night);
   const v = detail.vehicle;
   const history = detail.maintenance_history || [];
+  const root = useRef(null);
+
+  // The timeline draws itself: the rail grows down, then each visit slides in.
+  useLayoutEffect(() => {
+    if (!root.current || reducedMotion()) return undefined;
+    const ctx = gsap.context(() => {
+      gsap.from(".tl-rail", { scaleY: 0, transformOrigin: "top", duration: 0.9, ease: "power3.out" });
+      gsap.from(".tl-node", {
+        opacity: 0, x: -14, stagger: 0.12, duration: 0.6, delay: 0.2, ease: "power3.out",
+        clearProps: "opacity,transform",
+      });
+    }, root);
+    return () => ctx.revert();
+  }, []);
 
   return (
-    <div style={{ padding: "6px 18px 28px" }}>
+    <div ref={root} style={{ padding: "6px 18px 28px" }}>
       <div style={{ paddingTop: 10, paddingBottom: 18 }}>
         <div style={{ fontFamily: SANS, fontSize: 21, fontWeight: 700, color: t.ink }}>{v.model}</div>
         <Meta night={night} mono>
@@ -251,7 +321,7 @@ function Home({ detail, top, economics, booking, go }) {
       {booking?.booked ? (
         <BookedCard booking={booking} onOpen={() => go("booked")} />
       ) : top ? (
-        <NowCard top={top} economics={economics} go={go} />
+        <NowCard top={top} economics={economics} go={go} ring={ring} />
       ) : (
         <HealthyCard detail={detail} />
       )}
@@ -261,7 +331,7 @@ function Home({ detail, top, economics, booking, go }) {
       <div style={{ marginTop: 26 }}>
         <Meta night={night}>Timeline</Meta>
         <div style={{ marginTop: 12, position: "relative", paddingLeft: 18 }}>
-          <div style={{
+          <div className="tl-rail" style={{
             position: "absolute", left: 4, top: 6, bottom: 6, width: 2,
             background: t.edge, borderRadius: 2,
           }} />
@@ -303,7 +373,7 @@ function TimelineNode({ title, sub, dot }) {
   const night = useNight();
   const t = tokens(night);
   return (
-    <div style={{ position: "relative", paddingBottom: 16 }}>
+    <div className="tl-node" style={{ position: "relative", paddingBottom: 16 }}>
       <div style={{
         position: "absolute", left: -18, top: 4, width: 10, height: 10,
         borderRadius: 99, background: dot, border: `2px solid ${t.page}`,
@@ -328,6 +398,7 @@ export function HealthyCard({ detail }) {
         <Headline night={night} size={27} title="Everything reads normal"
           body="Signals watched continuously. No trouble codes, no wear trend worth telling you about." />
       </div>
+      <div style={{ marginTop: 14 }}><Heartbeat /></div>
       {series.length < 2 ? (
         // Six empty sparklines read as a page still loading, on the one screen
         // whose message is "nothing is wrong" — say plainly what is missing.
@@ -362,7 +433,7 @@ export function HealthyCard({ detail }) {
 /** The alert. Cost framing before technical detail, per strategies.yaml —
  *  and both escape hatches sit above the primary action, because an owner who
  *  feels cornered by a service prompt stops trusting every later one. */
-export function NowCard({ top, economics = null, go }) {
+export function NowCard({ top, economics = null, go, ring = false }) {
   const night = useNight();
   const t = tokens(night);
   const days = top.days_to_failure;
@@ -378,14 +449,19 @@ export function NowCard({ top, economics = null, go }) {
         <Meta night={night}>Now</Meta>
       </div>
 
-      <div style={{ marginTop: 14 }}>
-        <Headline
-          night={night} size={27}
-          title={wearingOut(top.component)}
-          body={days != null
-            ? `${drivingLeft(days)}, on current use.`
-            : "Wear is progressing on your current usage."}
-        />
+      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Headline
+            night={night} size={27}
+            title={wearingOut(top.component)}
+            body={days != null
+              ? `${drivingLeft(days)}, on current use.`
+              : "Wear is progressing on your current usage."}
+          />
+        </div>
+        {/* On a real phone there is no 3D stage beside this card, so the
+            countdown ring lives here instead. */}
+        {ring && <HealthRing days={days} severity={top.severity} diameter={84} />}
       </div>
 
       {economics && (
@@ -710,7 +786,7 @@ function Bubble({ m }) {
   const mine = m.role === "user";
   const bad = m.role === "system";
   return (
-    <div style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
+    <div className="pop-in" style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
       <div style={{
         maxWidth: "84%", borderRadius: 16,
         borderBottomRightRadius: mine ? 5 : 16, borderBottomLeftRadius: mine ? 16 : 5,
@@ -756,13 +832,48 @@ function TypingDots() {
 function Booked({ detail, top, economics, booking, back }) {
   const night = useNight();
   const t = tokens(night);
+  const card = useRef(null);
+
+  // Done. The receipt drops in like a ticket and a handful of confetti bursts
+  // from it — the one moment in the app that is allowed to celebrate, because
+  // it is the moment the owner actually decided something.
+  useLayoutEffect(() => {
+    const el = card.current;
+    if (!el || reducedMotion()) return undefined;
+    const hues = [color.accent, color.ok, color.p3, color.amber];
+    const bits = [];
+    const ctx = gsap.context(() => {
+      gsap.from(el, {
+        opacity: 0, y: -30, rotationX: -70, transformPerspective: 900, transformOrigin: "50% 0%",
+        duration: 0.9, ease: "back.out(1.4)", clearProps: "opacity,transform,transformPerspective,transformOrigin",
+      });
+      for (let i = 0; i < 30; i++) {
+        const bit = document.createElement("span");
+        bit.setAttribute("aria-hidden", "true");
+        Object.assign(bit.style, {
+          position: "absolute", left: "50%", top: "40%", width: "7px", height: "11px", borderRadius: "2px",
+          background: hues[i % hues.length], pointerEvents: "none", zIndex: "3",
+        });
+        el.appendChild(bit);
+        bits.push(bit);
+        gsap.fromTo(bit,
+          { x: 0, y: 0, rotation: 0, opacity: 1, scale: 1 },
+          {
+            x: (Math.random() - 0.5) * 320, y: -60 - Math.random() * 120, rotation: Math.random() * 720 - 360,
+            duration: 0.5 + Math.random() * 0.2, ease: "power2.out",
+            onComplete: () => gsap.to(bit, { y: "+=240", opacity: 0, rotation: "+=180", duration: 0.9 + Math.random() * 0.4, ease: "power1.in" }),
+          });
+      }
+    }, el);
+    return () => { ctx.revert(); bits.forEach((b) => b.remove()); };
+  }, []);
 
   return (
     <>
       <ScreenHeader title="Booking" back={back} />
       <div style={{ padding: "22px 18px 28px" }}>
-        <div style={{
-          borderRadius: 18, padding: 22, background: tokens(night).okBg, border: `1px solid ${tokens(night).okBorder}`,
+        <div ref={card} style={{
+          position: "relative", borderRadius: 18, padding: 22, background: tokens(night).okBg, border: `1px solid ${tokens(night).okBorder}`,
         }}>
           <Meta night={night} style={{ color: tokens(night).positive }}>Confirmed</Meta>
           <div style={{ fontFamily: SANS, fontSize: 27, fontWeight: 700, color: t.ink, marginTop: 8, lineHeight: 1.2 }}>

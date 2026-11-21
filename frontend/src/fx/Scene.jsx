@@ -5,7 +5,7 @@ import { RoadScene } from "./RoadScene.jsx";
 // it, so it is its own chunk: the console never downloads it.
 const Road3D = lazy(() => import("./Road3D.jsx"));
 
-function webglAvailable() {
+export function webglAvailable() {
   if (typeof window === "undefined" || /jsdom/i.test(navigator.userAgent)) return false;
   try {
     const canvas = document.createElement("canvas");

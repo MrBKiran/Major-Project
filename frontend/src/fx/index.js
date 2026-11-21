@@ -17,3 +17,4 @@ export { Scene } from "./Scene.jsx";
 export { SignalChip } from "./SignalChip.jsx";
 export { installSpotlight } from "./spotlight.js";
 export { Tilt } from "./Tilt.jsx";
+export { TwinScene } from "./TwinScene.jsx";
