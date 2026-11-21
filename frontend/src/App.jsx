@@ -7,7 +7,7 @@
  * neither should have to be special-cased here by name.
  */
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
 import Login from "./pages/Login.jsx";
@@ -20,6 +20,7 @@ import OwnerApp from "./pages/OwnerApp.jsx";
 import Account from "./pages/Account.jsx";
 import MobileApp from "./MobileApp.jsx";
 import { CommandPalette, DotGrid, gsap, reducedMotion, revealOnMount, usePaletteHotkey } from "./fx";
+import { navigate, useRoute } from "./route.js";
 import { SideNav } from "./shell/SideNav.jsx";
 import { ThemeProvider, ThemeToggle } from "./theme.jsx";
 import { BrandMark } from "./ui.jsx";
@@ -448,8 +449,22 @@ export function AccountMenu({ onAccount }) {
   );
 }
 
+// The public site is its own chunk: signed-in users never download it.
+const Landing = lazy(() => import("./site/Landing.jsx"));
+
+/**
+ * Who sees what: a signed-in person gets the app; a signed-out visitor gets the
+ * public site at `/` and the sign-in form at `/login`. Signing in from /login
+ * lands on the app at `/`.
+ */
 function Gate() {
   const { status } = useAuth();
+  const path = useRoute();
+
+  useEffect(() => {
+    if (status === "authed" && path !== "/") navigate("/", { replace: true });
+  }, [status, path]);
+
   if (status === "loading") {
     return (
       <div className="flex min-h-full items-center justify-center">
@@ -460,7 +475,13 @@ function Gate() {
       </div>
     );
   }
-  return status === "authed" ? <Shell /> : <Login />;
+  if (status === "authed") return <Shell />;
+  if (path === "/login") return <Login />;
+  return (
+    <Suspense fallback={<div className="min-h-full bg-surface-page" />}>
+      <Landing />
+    </Suspense>
+  );
 }
 
 /** `/app` is the owner app on a real phone; everything else is the console.

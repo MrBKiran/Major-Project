@@ -27,6 +27,7 @@ import MfaStep from "./login/MfaStep.jsx";
 import PhoneSignIn from "./login/PhoneSignIn.jsx";
 import { BrandMark } from "../ui.jsx";
 import { BlurText, DotGrid, FlipText, gsap, Magnetic, Marquee, reducedMotion, Scene, SignalChip, Tilt } from "../fx";
+import { navigate } from "../route.js";
 import { ThemeToggle, useThemeMode } from "../theme.jsx";
 import { ErrorNote, Field, inputCls, submitCls } from "./login/parts.jsx";
 
@@ -127,6 +128,16 @@ export default function Login({ defaultMethod = "password", surface = "console" 
         <div aria-hidden className="aurora"><i /><i /><i /></div>
         {/* Signed out, the theme can still be chosen. */}
         <div className="absolute right-4 top-4 z-[1]"><ThemeToggle compact /></div>
+        {/* The console's sign-in is reached from the public site; the owner's phone app has no site to go back to. */}
+        {showHero && (
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="absolute left-4 top-4 z-[1] rounded-md px-2 py-1 text-label text-fg-muted transition hover:text-fg-strong"
+          >
+            ← Back to site
+          </button>
+        )}
 
       <div className="animate-in relative w-full max-w-sm">
         <div className="mb-8 text-center">
