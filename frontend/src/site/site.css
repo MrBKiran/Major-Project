@@ -1,0 +1,104 @@
+/* The public site. Always dark and cinematic; colours are the shared night tokens
+   (the page sets data-theme="night" while it is mounted). Sizes here are
+   deliberately larger than the app's type scale — this is a splash page, not a
+   data screen — and live in CSS so the app's scale guard stays about the app. */
+
+.site { position: relative; background: var(--color-surface-page); color: var(--color-fg); overflow-x: clip; }
+
+.site-world { position: fixed; inset: 0; z-index: 0; }
+.site-vignette {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% 110%, color-mix(in srgb, var(--color-surface-page) 90%, transparent), transparent 60%),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-surface-page) 70%, transparent), transparent 22%);
+}
+
+.site-nav {
+  position: fixed; inset: 0 0 auto 0; z-index: 30; display: flex; align-items: center; justify-content: space-between;
+  padding: 18px clamp(20px, 4vw, 56px); pointer-events: none;
+}
+.site-nav > * { pointer-events: auto; }
+
+.site-main { position: relative; z-index: 10; pointer-events: none; }
+/* Exactly one viewport tall: the scroll position maps to the camera stop by it. */
+.site-section {
+  height: 100svh; display: flex; align-items: center;
+  padding: 90px clamp(20px, 6vw, 96px); position: relative;
+}
+.site-section[data-side="right"] { justify-content: flex-end; }
+.site-panel { pointer-events: auto; max-width: 540px; }
+
+.site-h1 { font-size: clamp(44px, 7.6vw, 116px); line-height: 0.94; letter-spacing: -0.045em; font-weight: 700; }
+.site-h2 { font-size: clamp(32px, 4.6vw, 70px); line-height: 1; letter-spacing: -0.035em; font-weight: 700; }
+.site-lead { font-size: clamp(16px, 1.4vw, 20px); line-height: 1.55; color: var(--color-fg-secondary); }
+.site-eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.02em; color: var(--color-link); }
+.site-num { font-family: var(--font-mono); font-size: 12px; color: var(--color-fg-subtle); }
+
+.site-glass {
+  background: color-mix(in srgb, var(--color-surface-card) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 45%, transparent);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-radius: 18px;
+}
+
+/* Notched pill, after the boxed, angular labels seen on bold studio sites. */
+.site-pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px;
+  font-size: 13px; color: var(--color-fg-secondary);
+  background: color-mix(in srgb, var(--color-surface-card) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 50%, transparent);
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%);
+}
+
+.site-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 15px 26px; border-radius: 999px; font-size: 15px; font-weight: 600; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 60%, transparent);
+  color: var(--color-fg-strong); background: color-mix(in srgb, var(--color-surface-card) 60%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+.site-btn:hover { border-color: var(--color-accent); transform: translateY(-2px); }
+.site-btn-primary { background: var(--color-accent-deep); border-color: transparent; color: var(--color-on-accent);
+  box-shadow: 0 3px 0 var(--color-accent-ink), 0 16px 32px -14px color-mix(in srgb, var(--color-accent) 80%, transparent); }
+.site-btn-primary:hover { background: var(--color-accent-ink); border-color: transparent; }
+
+.site-hud {
+  position: fixed; left: 50%; bottom: 28px; z-index: 40; transform: translateX(-50%);
+  max-width: min(640px, calc(100vw - 40px)); pointer-events: none;
+  font-size: 15px; line-height: 1.45; color: var(--color-fg-strong);
+}
+.site-hint {
+  position: fixed; left: 50%; bottom: 28px; z-index: 35; transform: translateX(-50%); pointer-events: none;
+  font-family: var(--font-mono); font-size: 12px; color: var(--color-fg-muted); text-align: center;
+}
+
+.site-rail { position: fixed; right: clamp(10px, 2vw, 28px); top: 50%; z-index: 30; transform: translateY(-50%); display: flex; flex-direction: column; gap: 14px; }
+.site-rail button { width: 10px; height: 10px; border-radius: 99px; border: 1px solid var(--color-fg-subtle); background: transparent; cursor: pointer; padding: 0;
+  transition: transform 200ms ease, background-color 200ms ease, border-color 200ms ease; }
+.site-rail button:hover { transform: scale(1.4); }
+.site-rail button[aria-current="step"] { background: var(--color-accent); border-color: var(--color-accent); transform: scale(1.5); }
+
+.site-cursor {
+  position: fixed; left: 0; top: 0; z-index: 60; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 99px; pointer-events: none;
+  border: 1.5px solid color-mix(in srgb, var(--color-accent) 80%, transparent);
+  transition: width 180ms ease, height 180ms ease, margin 180ms ease, background-color 180ms ease;
+  mix-blend-mode: screen;
+}
+.site-cursor[data-down="true"] { width: 22px; height: 22px; margin: -11px 0 0 -11px; background: color-mix(in srgb, var(--color-accent) 50%, transparent); }
+@media (hover: none) { .site-cursor { display: none; } }
+
+.site-scroll-cue { display: inline-flex; flex-direction: column; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--color-fg-muted); }
+.site-scroll-cue i { width: 1px; height: 38px; background: linear-gradient(var(--color-accent), transparent); animation: cue 1.8s ease-in-out infinite; transform-origin: top; }
+@keyframes cue { 0% { transform: scaleY(0); } 50% { transform: scaleY(1); } 100% { transform: scaleY(1); opacity: 0; } }
+
+@media (max-width: 800px) {
+  .site-section, .site-section[data-side="right"] { justify-content: flex-start; align-items: flex-end; padding-bottom: 110px; }
+  .site-panel { max-width: none; }
+  .site-rail { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-scroll-cue i { animation: none; transform: none; }
+  .site-btn { transition: none; }
+}
