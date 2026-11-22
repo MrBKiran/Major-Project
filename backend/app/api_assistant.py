@@ -77,10 +77,14 @@ async def post_transcribe(audio: UploadFile = File(...), language: str | None = 
 @router.post("/actions/{action_id}/confirm")
 async def confirm_action(action_id: str, principal: Principal = Depends(requires("appointment:write"))) -> dict:
     result = await service.execute_action(principal, action_id)
-    if result.get("message"):
+    pid = principal.user_id
+    if result.get("ok"):
         # Both halves of the exchange go in the thread, so the thread reads as it happened.
-        pid = principal.user_id
         await asyncio.to_thread(store.add_message, pid, "user", "Yes, go ahead.", channel="tap")
+        await asyncio.to_thread(store.add_message, pid, "assistant", result["message"], channel="action")
+    elif result.get("message"):
+        # Nothing ran (expired, already done, or the booking failed). The owner is told why, but the
+        # thread must not show them agreeing to something that did not happen: later turns replay it.
         await asyncio.to_thread(store.add_message, pid, "assistant", result["message"], channel="action")
     return result
 

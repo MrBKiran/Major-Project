@@ -272,7 +272,10 @@ async def converse(principal: Principal, message: str, *, channel: str = "text",
                 "source": "guard", "pending_action": await asyncio.to_thread(store.pending_action, pid),
                 "done": None, "blocked": True}
 
-    out = await _turn(principal, message, channel, vin if vin and can_access_vin(principal, vin) else None,
+    # Only a car that is theirs is ever shown to the model or recorded on the thread. The check is a
+    # database query, so it runs off the event loop like every other one here.
+    vin = vin if vin and await asyncio.to_thread(can_access_vin, principal, vin) else None
+    out = await _turn(principal, message, channel, vin,
                       model or chat_step)
     await asyncio.to_thread(store.add_message, pid, "user", message, vin=vin, channel=channel)
     await asyncio.to_thread(store.add_message, pid, "assistant", out["reply"], vin=vin, channel=out["source"])
@@ -291,7 +294,22 @@ SUMMARISE_PROMPT = (
 MIN_TO_SUMMARISE = 8
 
 
+_summarising: set[str] = set()
+
+
 async def maybe_summarise(principal_id: str, model: ChatModel | None = None) -> bool:
+    """One summary at a time per owner (in this process). Two quick messages each schedule one;
+    without this both read the same backlog and the later write silently replaces the earlier."""
+    if principal_id in _summarising:
+        return False
+    _summarising.add(principal_id)
+    try:
+        return await _summarise(principal_id, model)
+    finally:
+        _summarising.discard(principal_id)
+
+
+async def _summarise(principal_id: str, model: ChatModel | None = None) -> bool:
     """Fold turns that have fallen out of the verbatim window into the summary."""
     older = await asyncio.to_thread(store.backlog, principal_id)
     if len(older) < MIN_TO_SUMMARISE:

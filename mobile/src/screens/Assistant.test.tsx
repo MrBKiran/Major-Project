@@ -125,6 +125,17 @@ it('shows a proposal as something waiting for a yes, and books only when told to
   await waitFor(() => expect(server.calls.filter((c) => c.path === `/api/vehicles/${VIN}/service`).length).toBeGreaterThan(1));
 });
 
+it('explains an offer that has run out, without showing a "Yes" the owner never gave', async () => {
+  await open({
+    'GET /api/assistant/thread': () => ({ turns: [], pending_action: PENDING }),
+    'POST /api/assistant/actions/*/confirm': () => ({ ok: false, message: 'That offer has run out. Ask me again and I’ll set it up fresh.' }),
+  });
+  await fireEvent.press(await screen.findByRole('button', { name: 'Yes, do it' }));
+  expect(await screen.findByText(/That offer has run out/)).toBeOnTheScreen();
+  expect(screen.queryByText('Yes, go ahead.')).toBeNull();
+  expect(screen.queryByText('Waiting for your yes')).toBeNull();
+});
+
 it('drops a proposal on No, and says so', async () => {
   const { server } = await open({
     'GET /api/assistant/thread': () => ({ turns: [], pending_action: PENDING }),

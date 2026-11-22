@@ -14,8 +14,6 @@ from app.db.session import SessionLocal
 
 # Turns replayed verbatim into the prompt; older ones live on as the summary.
 RECENT_TURNS = 12
-# Fold older turns into the summary once this many have piled up behind the recent ones.
-SUMMARISE_AFTER = 16
 # A proposal is only good for a short while: "yes" to something proposed yesterday
 # is not consent to book it today.
 ACTION_TTL = dt.timedelta(minutes=30)

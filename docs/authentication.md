@@ -156,6 +156,13 @@ build and a release build have different keys, and each needs its own Android cl
 button appears and Google answers with a developer error. The app only shows the button when the
 server has `GOOGLE_CLIENT_ID` set.
 
+**iOS is not set up yet.** Google's sign-in sheet needs a URL scheme on iOS (the iOS OAuth client id,
+reversed: `com.googleusercontent.apps.<id>`) and its Expo config plugin refuses to run without one.
+`mobile/app.config.js` therefore adds the plugin only when `GOOGLE_IOS_URL_SCHEME` is set. Create an iOS
+OAuth client (bundle id `io.autosaarthi.owner`), set that variable before `expo prebuild` / EAS builds,
+and Google sign-in will work on iPhone too. Until then iOS builds still succeed and the Google button
+does not complete there; Android is unaffected.
+
 ### Setting up SMS
 
 `SMS_PROVIDER=console` needs nothing: the code is printed in the backend log (marked *DEV-ONLY*).

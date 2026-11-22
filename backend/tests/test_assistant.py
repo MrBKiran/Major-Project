@@ -351,6 +351,54 @@ def test_old_turns_are_folded_into_a_summary_the_model_then_sees(client, owner, 
     assert "Saturday slots at the Kothrud centre" in model.calls[0][0][0]["content"]
 
 
+def test_only_one_summary_is_written_at_a_time_per_owner(client, owner, model):
+    me = client.get("/api/auth/me", headers=bearer(owner)).json()
+    pid = me.get("user_id") or me["id"]
+    for i in range(24):
+        store.add_message(pid, "user" if i % 2 == 0 else "assistant", f"turn {i}")
+    started = 0
+
+    async def slow_summariser(messages, tools):
+        nonlocal started
+        started += 1
+        await asyncio.sleep(0.2)
+        return say("Owner prefers Saturdays.")
+
+    async def two_at_once():
+        return await asyncio.gather(service.maybe_summarise(pid, slow_summariser),
+                                    service.maybe_summarise(pid, slow_summariser))
+
+    first, second = asyncio.run(two_at_once())
+    assert sorted([first, second]) == [False, True] and started == 1
+    assert "Saturdays" in store.memory(pid)["summary"]
+    assert pid not in service._summarising                    # and the owner is free to be summarised again
+
+
+def test_a_car_that_is_not_theirs_is_neither_shown_to_the_model_nor_recorded(client, owner, model):
+    model.steps = [say("Okay."), say("Okay.")]
+    send(client, owner, "what about this one?", vin=OTHER_VIN)
+    assert OTHER_VIN not in model.calls[0][0][-1]["content"]
+    send(client, owner, "and this one?", vin=VIN)
+    assert VIN in model.calls[1][0][-1]["content"]
+    with engine.connect() as c:
+        stored = c.execute(text("SELECT vin FROM assistant_messages WHERE role = 'user' ORDER BY id")).scalars().all()
+    assert stored == [None, VIN]
+
+
+def test_the_thread_never_shows_the_owner_agreeing_to_something_that_did_not_happen(client, owner, model):
+    predict()
+    propose_first_slot(model, a_slot(client, owner))
+    action = send(client, owner, "book it")["pending_action"]
+    url = f"/api/assistant/actions/{action['id']}/confirm"
+    assert client.post(url, headers=bearer(owner)).json()["ok"] is True
+    again = client.post(url, headers=bearer(owner)).json()                 # a second tap
+    assert again["ok"] is False
+
+    texts = [t["text"] for t in client.get("/api/assistant/thread", headers=bearer(owner)).json()["turns"]]
+    assert texts.count("Yes, go ahead.") == 1                              # the real one, not the replay
+    assert texts[-1] == "That is no longer waiting for your yes."          # but the owner's screen and thread agree
+
+
 # ── no model reachable ──────────────────────────────────────────────────────
 
 def test_with_no_model_it_still_says_where_things_stand(client, owner):
@@ -416,6 +464,7 @@ def test_words_whisper_makes_up_from_silence_and_noise_are_dropped(monkeypatch):
             client=_groq(lambda r: httpx.Response(200, json={"text": "x", "segments": segments}))))["text"]
 
     assert heard([{"text": " Mera brake kab?", "avg_logprob": -0.4}]) == "Mera brake kab?"
+    assert heard([{"text": " Mera brake kab?", "avg_logprob": -1.2}]) == "Mera brake kab?"       # accented, noisy cabin
     assert heard([{"text": " Thank you.", "avg_logprob": -0.64}]) == ""                       # silence
     assert heard([{"text": " So, I'm going to get the brake pads.", "avg_logprob": -1.57}]) == ""   # noise
     assert heard([{"text": " yes yes yes yes", "avg_logprob": -0.5, "compression_ratio": 3.1}]) == ""

@@ -39,8 +39,7 @@
       ],
       "expo-secure-store",
       "./plugins/with-windows-cmake.js",
-      ["expo-audio", { "microphonePermission": "AutoSaarthi listens only while you hold the microphone button, to answer your questions about your car." }],
-      "@react-native-google-signin/google-signin"
+      ["expo-audio", { "microphonePermission": "AutoSaarthi listens only while you hold the microphone button, to answer your questions about your car." }]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -107,8 +107,11 @@ export default function Assistant() {
     setProblem(null);
     try {
       const res = await api.post<ActionResponse>(`/api/assistant/actions/${pending.id}/${kind}`);
-      setTurns((t) => [...t, { id: localId(), role: 'user', text: kind === 'confirm' ? 'Yes, go ahead.' : 'No, leave it.' },
-                            { id: localId(), role: 'assistant', text: res.message }]);
+      // Mirrors what the server records: the owner's yes or no only when it took effect, never a
+      // "Yes" for something that had expired or already happened.
+      const said = kind === 'confirm' ? 'Yes, go ahead.' : 'No, leave it.';
+      setTurns((t) => [...t, ...(res.ok ? [{ id: localId(), role: 'user' as const, text: said }] : []),
+                            { id: localId(), role: 'assistant' as const, text: res.message }]);
       setPending(null);
       if (res.ok && kind === 'confirm') await refreshService();
       if (readAloud) say(res.message);

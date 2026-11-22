@@ -20,7 +20,9 @@ MAX_AUDIO_BYTES = 4 * 1024 * 1024
 # a stretch it was unsure of (low average log-probability, or a suspiciously repetitive
 # transcript) is dropped, and so are the stock phrases it produces from nothing at all.
 # Groq reports a no-speech probability of 0 for pure silence, so that figure is not relied on.
-MIN_CONFIDENCE = -1.0
+# -1.0 is Whisper's own "unsure" mark, but accented Hindi and a noisy cabin can score below it on
+# correct text. -1.3 still drops the pure-noise clips measured so far (about -1.6). Tune on real clips.
+MIN_CONFIDENCE = -1.3
 MAX_COMPRESSION = 2.4
 PHANTOMS = {"thank you", "thank you.", "thanks for watching", "thanks for watching.",
             "thank you for watching", "thank you for watching.", "you", "you.", "bye", "bye."}
