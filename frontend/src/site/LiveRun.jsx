@@ -1,24 +1,30 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { reducedMotion } from "../fx/gsap.js";
 import { webglAvailable } from "../fx/Scene.jsx";
-import { SCENARIOS } from "./content.js";
+import { HELPERS, SCENARIOS } from "./content.js";
+import { useDetail } from "./detail.jsx";
 
 // three.js is the heaviest thing on the page; the car is its own chunk.
 const HeroCar = lazy(() => import("./HeroCar.jsx"));
 
 /**
- * The hero: the product running, not a picture of it. Four real runs — an
- * owner's car, a car on the move, a plant-quality cluster and an attack — each
- * played step by step the way the agents take them: think, pick the tool,
- * execute. Choosing a run re-colours the whole card and the car with it.
+ * The hero: the product running, not a picture of it. Four situations — a car
+ * that needs a repair, a driver on the road, a factory problem, an attack —
+ * each played one helper at a time, in plain words: who is working, what they
+ * are doing, and what came of it. Choosing a situation re-colours the card and
+ * the car with it. With technical details on, each step also shows the agent's
+ * reasoning and the exact tool it called.
  *
- * It plays only while on screen, moves on to the next run when one finishes, and
- * under reduced motion shows every step already done.
+ * It plays only while on screen, moves on when a situation finishes, and under
+ * reduced motion shows every step already done.
  */
 
 const PHASES = ["think", "tool", "exec"];
-const PHASE_MS = { think: 1100, tool: 1000, exec: 1500 };
-const HOLD_MS = 3800;
+const PHASE_MS = { think: 1300, tool: 1100, exec: 1500 };
+const STEP_MS = PHASE_MS.think + PHASE_MS.tool + PHASE_MS.exec;
+const HOLD_MS = 4200;
+
+const STATUS_TONE = { rising: "rose", falling: "rose", high: "rose", normal: "green", driving: "amber" };
 
 export function SvgCar({ className = "" }) {
   return (
@@ -39,56 +45,58 @@ export function SvgCar({ className = "" }) {
   );
 }
 
-function StepIcon({ state }) {
-  if (state === "done") {
-    return (
-      <svg viewBox="0 0 16 16" className="s-step-icon" aria-hidden="true">
-        <circle cx="8" cy="8" r="7" className="s-step-icon-ring" />
-        <path d="M5 8.2 7.1 10.2 11 6" className="s-step-icon-tick" />
-      </svg>
-    );
-  }
-  if (state === "active") return <span className="s-step-spin" aria-hidden="true" />;
-  return <span className="s-step-wait" aria-hidden="true" />;
+function Tick() {
+  return (
+    <svg viewBox="0 0 16 16" className="s-step-icon" aria-hidden="true">
+      <circle cx="8" cy="8" r="7" className="s-step-icon-ring" />
+      <path d="M5 8.2 7.1 10.2 11 6" className="s-step-icon-tick" />
+    </svg>
+  );
+}
+
+function TechRows({ step, phase, state }) {
+  const at = state === "done" ? PHASES.length : PHASES.indexOf(phase);
+  const mark = (i) => (at > i ? <Tick /> : <span className="s-step-spin" aria-hidden="true" />);
+  return (
+    <div className="s-step-tech">
+      <div className="s-step-row">{mark(0)}<div><b>Reasoning</b><p>{step.tech.think}</p></div></div>
+      {at >= 1 && (
+        <div className="s-step-row">{mark(1)}<div><b>Tool call</b><p className="s-code"><span>{step.tech.tool}</span>{step.tech.args}</p></div></div>
+      )}
+      {at >= 2 && (
+        <div className="s-step-row">{mark(2)}<div><b>Returned</b><p className="s-code">{at > 2 ? step.tech.result : "…"}</p></div></div>
+      )}
+    </div>
+  );
 }
 
 function Step({ step, n, total, state, phase }) {
-  const reached = (p) => state === "done" || (state === "active" && PHASES.indexOf(phase) >= PHASES.indexOf(p));
-  const finished = (p) => state === "done" || (state === "active" && PHASES.indexOf(phase) > PHASES.indexOf(p));
-  const status = state === "done" ? (step.blocked ? "Blocked" : "Done") : state === "active" ? "Executing" : "Waiting";
+  const { on: tech } = useDetail();
+  const helper = HELPERS[step.helper];
+  const status = state === "done" ? (step.blocked ? "Stopped" : "Done") : state === "active" ? "Working" : "Up next";
   return (
-    <li className="s-step" data-state={state} data-tone={step.tone} data-blocked={step.blocked ? "true" : undefined}>
+    <li className="s-step" data-state={state} data-tone={helper.tone} data-blocked={step.blocked ? "true" : undefined}>
       <div className="s-step-head">
-        <span className="s-step-n">{String(n).padStart(2, "0")} / {String(total).padStart(2, "0")}</span>
-        <span className="s-step-agent"><i className="s-dot" />{step.agent}</span>
-        <span className="s-step-status">{status}</span>
+        <span className="s-step-n" aria-hidden="true">{n}</span>
+        <span className="s-step-who">
+          <b>{helper.name}</b>
+          {step.hijacked && <em className="s-step-tag">taken over</em>}
+          {tech && <code>{helper.tech}</code>}
+        </span>
+        <span className="s-step-status"><span className="sr-only">Step {n} of {total}: </span>{status}</span>
       </div>
-      {state === "done" && <p className="s-step-result">{step.result}</p>}
       {state === "active" && (
         <div className="s-step-body">
-          <div className="s-step-row" data-on={reached("think")}>
-            <StepIcon state={finished("think") ? "done" : "active"} />
-            <div><b>Think and reason</b><p>{step.think}</p></div>
-          </div>
-          {reached("tool") && (
-            <div className="s-step-row">
-              <StepIcon state={finished("tool") ? "done" : "active"} />
-              <div>
-                <b>Pick the right tool</b>
-                <p className="s-code"><span>{step.tool}</span> {step.args}</p>
-              </div>
-            </div>
+          <p className="s-step-doing">{step.doing}</p>
+          {tech ? <TechRows step={step} phase={phase} state={state} /> : (
+            <span className="s-step-bar" aria-hidden="true"><i style={{ animationDuration: `${STEP_MS}ms` }} /></span>
           )}
-          {reached("exec") && (
-            <div className="s-step-row">
-              <StepIcon state="active" />
-              <div className="min-w-0 flex-1">
-                <b>Execute</b>
-                <p>Calling {step.tool.split(".")[0]}…</p>
-                <span className="s-step-bar"><i style={{ animationDuration: `${PHASE_MS.exec}ms` }} /></span>
-              </div>
-            </div>
-          )}
+        </div>
+      )}
+      {state === "done" && (
+        <div className="s-step-body">
+          <p className="s-step-result">{step.result}</p>
+          {tech && <p className="s-code s-step-techresult"><span>{step.tech.tool}</span>{step.tech.result}</p>}
         </div>
       )}
     </li>
@@ -97,6 +105,7 @@ function Step({ step, n, total, state, phase }) {
 
 export default function LiveRun() {
   const reduce = reducedMotion();
+  const { on: tech } = useDetail();
   const [index, setIndex] = useState(0);
   const [step, setStep] = useState(reduce ? Infinity : 0);
   const [phase, setPhase] = useState("think");
@@ -146,13 +155,16 @@ export default function LiveRun() {
   };
 
   const current = Math.min(step, total - 1);
+  const who = HELPERS[sc.steps[current].helper];
   const status = step >= total
-    ? `Run complete · ${total} of ${total} steps`
-    : `Step ${current + 1} of ${total} · ${sc.steps[current].agent} · ${phase === "think" ? "Thinking" : phase === "tool" ? "Choosing a tool" : "Executing"}`;
+    ? `All done · ${total} of ${total} steps`
+    : tech
+      ? `Step ${current + 1} of ${total} · ${who.tech} · ${phase === "think" ? "reasoning" : phase === "tool" ? "calling a tool" : "waiting for the result"}`
+      : `Step ${current + 1} of ${total} · ${who.name} is working`;
 
   return (
     <div ref={root} className="s-run" data-tone={sc.tone}>
-      <div className="s-run-tabs" role="tablist" aria-label="Choose a run" onKeyDown={onKey}>
+      <div className="s-run-tabs" role="tablist" aria-label="Choose a situation" onKeyDown={onKey}>
         {SCENARIOS.map((s, i) => (
           <button
             key={s.id}
@@ -188,11 +200,12 @@ export default function LiveRun() {
             <SvgCar className="s-svgcar" />
           )}
           <p className="s-run-vehicle">{sc.vehicle}</p>
-          <ul className="s-run-readings" aria-label="Live readings">
+          <ul className="s-run-readings" aria-label="What the car is reporting">
             {sc.readings.map((r) => (
-              <li key={r.label} data-trend={r.trend}>
+              <li key={r.label}>
                 <span>{r.label}</span>
-                <b>{r.value}{r.trend === "up" ? " ↑" : r.trend === "down" ? " ↓" : ""}</b>
+                <b>{r.value}</b>
+                {r.status && <em data-tone={STATUS_TONE[r.status]}>{r.status}</em>}
               </li>
             ))}
           </ul>
@@ -201,7 +214,7 @@ export default function LiveRun() {
 
         <div className="s-run-log">
           <div className="s-run-trigger">
-            <span className="s-run-trigger-tag"><i className="s-dot" />Signal</span>
+            <span className="s-run-trigger-tag"><i className="s-dot" />What's happening</span>
             <p>{sc.trigger}</p>
           </div>
           <p className="s-run-status" aria-live="polite">{status}</p>
@@ -218,7 +231,7 @@ export default function LiveRun() {
             ))}
           </ol>
           {step >= total && (
-            <button type="button" className="s-run-replay" onClick={() => choose(index)}>Replay this run</button>
+            <button type="button" className="s-run-replay" onClick={() => choose(index)}>Play it again</button>
           )}
         </div>
       </div>

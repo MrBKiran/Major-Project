@@ -36,17 +36,17 @@ function toPath(values, w = 300, h = 56) {
 }
 
 const SENSORS = [
-  { name: "Coolant temperature", unit: "°C", value: "97.2", values: series(1, 9), drift: true, tone: "amber" },
+  { name: "Engine temperature", unit: "°C", value: "97.2", values: series(1, 9), drift: true, tone: "amber" },
   { name: "Oil pressure", unit: "bar", value: "3.9", values: series(4, 0), tone: "teal" },
-  { name: "Battery voltage", unit: "V", value: "14.3", values: series(7, 0), tone: "teal" },
+  { name: "Battery", unit: "V", value: "14.3", values: series(7, 0), tone: "teal" },
 ];
 
 function SensorBoard({ p }) {
   return (
     <div className="s-board">
       <div className="s-board-head">
-        <span><i className="s-live" />Live telemetry</span>
-        <b>MH12AB1001 · Bolero · Pune</b>
+        <span><i className="s-live" />Live readings, last 24 hours</span>
+        <b>Ramesh&apos;s Bolero · Pune</b>
       </div>
       {SENSORS.map((s) => (
         <div key={s.name} className="s-sensor" data-tone={s.tone}>
@@ -62,7 +62,7 @@ function SensorBoard({ p }) {
       ))}
       <p className="s-board-flag" data-on={p > 0.72}>
         <i className="s-dot" data-tone="amber" />
-        Drift found nine days before a warning light would come on
+        Rising for 9 days — caught long before any warning light
       </p>
     </div>
   );
@@ -109,7 +109,7 @@ function PhoneBook({ p }) {
       <div className="s-book">
         <p className="s-book-k">Book a service</p>
         <b className="s-book-centre">Hero-M&amp;M Service, Kothrud</b>
-        <span className="s-book-meta">2.1 km · bay free · water pump in stock</span>
+        <span className="s-book-meta">2.1 km away · free bay · part in stock</span>
         {SLOTS.map((d) => (
           <div key={d.day} className="s-book-day">
             <span>{d.day}</span>
@@ -124,7 +124,7 @@ function PhoneBook({ p }) {
           <span className="s-ticket-k">Confirmed</span>
           <b>Mon 23 Nov, 9:00 am</b>
           <span>Hero-M&amp;M Service, Kothrud</span>
-          <span className="s-ticket-ref">Ref APT-c1db7de7c0 · reminder the day before</span>
+          <span className="s-ticket-ref">We&apos;ll remind you the day before</span>
         </div>
       </div>
     </Phone>
@@ -139,23 +139,23 @@ function PlantReport({ p }) {
   return (
     <div className="s-board s-plant">
       <div className="s-board-head">
-        <span><i className="s-live" data-tone="violet" />Defect cluster</span>
-        <b>Nashik · BATCH-2024-Q3-WP</b>
+        <span><i className="s-live" data-tone="violet" />Factory check</span>
+        <b>Nashik factory · one batch of 46 cars</b>
       </div>
-      <p className="s-plant-q">Water pump replacements, car by car</p>
+      <p className="s-plant-q">Each dot is one car from the batch. Red means it needed a new water pump.</p>
       <div className="s-batch" aria-label={`${lit} of 46 cars in the batch had the water pump replaced`} role="img">
         {Array.from({ length: 46 }, (_, i) => (
           <i key={i} data-hit={FAILED.slice(0, lit).includes(i) ? "true" : undefined} />
         ))}
       </div>
       <dl className="s-plant-stats">
-        <div><dt>Units affected</dt><dd>{lit}/46</dd></div>
-        <div><dt>Lift vs baseline</dt><dd>{p > 0.45 ? "8.41×" : "—"}</dd></div>
-        <div><dt>FDR q-value</dt><dd>{p > 0.55 ? "0.007" : "—"}</dd></div>
+        <div><dt>Cars affected</dt><dd>{lit} of 46</dd></div>
+        <div><dt>Compared with normal</dt><dd>{p > 0.45 ? "8× more" : "—"}</dd></div>
+        <div><dt>Chance it&apos;s a fluke</dt><dd>{p > 0.55 ? "< 1 in 100" : "—"}</dd></div>
       </dl>
       <p className="s-board-flag" data-on={p > 0.75}>
         <i className="s-dot" data-tone="violet" />
-        CAPA draft ready · ₹7.2 lakh avoidable · waiting for a manager&apos;s yes
+        A fix for the factory is ready — it goes out once a manager approves
       </p>
     </div>
   );
@@ -202,7 +202,7 @@ export default function Journey() {
         <div className="s-wrap s-journey-grid">
           <div className="s-journey-copy">
             <p className="s-eyebrow">How it works</p>
-            <h2 id="journey-title" className="s-h2">From a reading to a repair.</h2>
+            <h2 id="journey-title" className="s-h2">From a warning sign to a repair.</h2>
             <ol className="s-jr-steps">
               {JOURNEY.map((j, i) => (
                 <li key={j.id} data-tone={j.tone} data-state={i < stage ? "done" : i === stage ? "active" : "next"}>

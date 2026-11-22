@@ -1,8 +1,9 @@
 /**
  * The public site. jsdom has no WebGL and no scroll, so what is checked here is
- * the part that must work without them: the story is real text, the live run
- * can be driven from the keyboard, the security console really refuses and
- * chains every attack, and the way in is a click away.
+ * the part that must work without them: the story is real text an ordinary
+ * reader can follow, the engineering names appear only when asked for, the
+ * live run can be driven from the keyboard, the security log really refuses
+ * and chains every attack, and the way in is a click away.
  */
 
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
@@ -22,23 +23,44 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+const techSwitch = () => screen.getAllByRole("switch", { name: "Show technical details" })[0];
+
+// Words a driver should never have to decode. Tool names look like `scheduler.confirm`.
+const JARGON = [
+  /\b[a-z]+\.[a-z_]+\b/, /\b\w+_agent\b/, /\bueba\b/i, /\bcapa\b/i, /\bvin\b/i, /\btelemetry\b/i,
+  /q-value/i, /\bfdr\b/i, /\boem\b/i, /allowlist/i, /enumeration/i, /\binjection\b/i, /\bP[12]\b/, /severity/i,
+];
+
 describe("public landing page", () => {
   it("states what the product does in plain text", () => {
     render(<Landing />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/fix it before\s*it breaks/i);
     const sections = screen.getByRole("navigation", { name: "Sections" });
-    for (const name of ["How it works", "Agents", "Security", "Screens"]) {
+    for (const name of ["How it works", "AI helpers", "Safety", "Apps"]) {
       expect(within(sections).getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
-      "From a reading to a repair.",
-      "Seven agents. One orchestra.",
-      "Every move is policed.",
+      "See it in action",
+      "From a warning sign to a repair.",
+      "Seven AI helpers. One team.",
+      "Every action is checked first.",
       "Three screens. One story.",
-      "Watch it work on live data.",
+      "See it on real data.",
     ]);
     // All four stages of the pinned story are readable, not only the one on screen.
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(4);
+    const journey = screen.getByRole("region", { name: "From a warning sign to a repair." });
+    expect(within(journey).getAllByRole("heading", { level: 3 })).toHaveLength(4);
+  });
+
+  it("speaks plainly until the visitor asks for the technical detail", () => {
+    const { container } = render(<Landing />);
+    const visible = () => container.textContent;
+    for (const word of JARGON) expect(visible()).not.toMatch(word);
+
+    fireEvent.click(techSwitch());
+    for (const s of screen.getAllByRole("switch")) expect(s).toHaveAttribute("aria-checked", "true");
+    expect(visible()).toMatch(/telemetry\.read_window/);
+    expect(visible()).toMatch(/data_analysis_agent/);
   });
 
   it("takes a visitor to the sign-in", () => {
@@ -50,26 +72,28 @@ describe("public landing page", () => {
 });
 
 describe("the live run", () => {
-  it("opens on the owner's car with its first agent at work", () => {
+  it("opens on a car that needs a repair, with the first helper at work", () => {
     render(<Landing />);
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual(SCENARIOS.map((s) => s.tab));
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     const panel = screen.getByRole("tabpanel");
     expect(panel).toHaveTextContent(SCENARIOS[0].trigger);
-    expect(panel).toHaveTextContent(SCENARIOS[0].steps[0].think);
-    expect(panel).toHaveTextContent(/Step 1 of 5 · Data analysis agent/);
+    expect(panel).toHaveTextContent(SCENARIOS[0].steps[0].doing);
+    expect(panel).toHaveTextContent("Step 1 of 5 · Health monitor is working");
+    expect(panel).toHaveTextContent(/Engine temperature\s*97\.2 °C\s*rising/);
   });
 
-  it("switches runs by click and by arrow key, re-colouring the card", () => {
+  it("switches situations by click and by arrow key, re-colouring the card", () => {
     const { container } = render(<Landing />);
-    fireEvent.click(screen.getByRole("tab", { name: "Plant quality" }));
-    expect(screen.getByRole("tabpanel")).toHaveTextContent(/Seven water pumps replaced in one production batch/);
+    fireEvent.click(screen.getByRole("tab", { name: "A factory problem" }));
+    expect(screen.getByRole("tabpanel")).toHaveTextContent(/Seven cars built in the same production batch/);
     expect(container.querySelector(".s-run")).toHaveAttribute("data-tone", "violet");
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "Plant quality" }), { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: "Under attack" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Under attack" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "A factory problem" }), { key: "ArrowRight" });
+    const attack = screen.getByRole("tab", { name: "Someone tries to misuse it" });
+    expect(attack).toHaveAttribute("aria-selected", "true");
+    expect(attack).toHaveFocus();
     expect(container.querySelector(".s-run")).toHaveAttribute("data-tone", "rose");
   });
 
@@ -79,7 +103,7 @@ describe("the live run", () => {
     try {
       render(<Landing />);
       const panel = screen.getByRole("tabpanel");
-      expect(panel).toHaveTextContent("Run complete · 5 of 5 steps");
+      expect(panel).toHaveTextContent("All done · 5 of 5 steps");
       for (const step of SCENARIOS[0].steps) expect(panel).toHaveTextContent(step.result);
     } finally {
       window.matchMedia = before;
@@ -92,40 +116,47 @@ describe("the live run", () => {
   });
 });
 
-describe("the orchestra", () => {
-  it("says what the conductor is denied, not only what it may do", () => {
+describe("the helpers", () => {
+  it("say what each one may not do — in words, or as tools on request", () => {
     render(<Landing />);
-    const master = screen.getByRole("button", { name: /Master agent/ });
-    expect(master).toHaveTextContent("runs.write_plan");
-    expect(master).toHaveTextContent("scheduler.confirm");
-    expect(master).toHaveTextContent(/Deliberately weak/);
+    const lead = screen.getByRole("heading", { level: 3, name: "Team lead" }).closest("article");
+    expect(within(lead).getByRole("list", { name: "Team lead cannot" })).toHaveTextContent("Book a repair");
+    expect(lead).toHaveTextContent(/Deliberately limited/);
+
+    fireEvent.click(techSwitch());
+    expect(lead).toHaveTextContent("master_agent");
+    expect(lead).toHaveTextContent("runs.write_plan");
+    expect(lead).toHaveTextContent("scheduler.confirm");
   });
 });
 
-describe("the security console", () => {
-  it("refuses each attack and chains it into the log", () => {
+describe("the security log", () => {
+  it("stops each attack and seals it to the entry before", () => {
     vi.useFakeTimers();
     render(<Landing />);
-    const log = screen.getByRole("list", { name: "Audit log" });
-    const count = () => screen.getByText(/of 5 attacks blocked/).closest("p").textContent;
-    expect(count()).toBe("0 of 5 attacks blocked");
+    const log = screen.getByRole("list", { name: "Security log" });
+    const count = () => screen.getByText(/of 5 attacks stopped/).closest("p").textContent;
+    expect(count()).toBe("0 of 5 attacks stopped");
 
-    fireEvent.click(screen.getByRole("button", { name: /ATTACK-1/ }));
-    act(() => { vi.advanceTimersByTime(1200); });
+    fireEvent.click(screen.getByRole("button", { name: /Snooping on car data/ }));
+    act(() => { vi.advanceTimersByTime(1400); });
     expect(log).toHaveTextContent(ATTACKS[0].attempt);
-    expect(log).toHaveTextContent(`Blocked · ${ATTACKS[0].verdict}`);
-    expect(log).toHaveTextContent(/chained \w{4}…\w{3} ← 81be…f04/);
-    expect(screen.getByRole("button", { name: /ATTACK-1/ })).toHaveTextContent("Blocked");
+    expect(log).toHaveTextContent(`Stopped. ${ATTACKS[0].verdict}`);
+    expect(log).toHaveTextContent("Written to the log as entry 1, sealed to the one before it.");
+    expect(screen.getByRole("button", { name: /Snooping on car data/ })).toHaveTextContent("Stopped ✓");
 
-    // The second link points back at the first: that is the chain.
-    fireEvent.click(screen.getByRole("button", { name: /ATTACK-3/ }));
-    act(() => { vi.advanceTimersByTime(1200); });
+    fireEvent.click(screen.getByRole("button", { name: /Tricking it by voice/ }));
+    act(() => { vi.advanceTimersByTime(1400); });
+    expect(count()).toBe("2 of 5 attacks stopped");
+
+    // Technically, "sealed" means each entry carries the fingerprint of the one before.
+    fireEvent.click(techSwitch());
     const chains = [...log.querySelectorAll('[data-kind="chain"]')].map((li) => li.textContent);
-    const firstHash = chains[0].match(/chained (\S+)/)[1];
-    expect(chains[1]).toContain(`← ${firstHash}`);
-    expect(count()).toBe("2 of 5 attacks blocked");
+    expect(chains[0]).toMatch(/audit entry \w{4}…\w{3} ← 81be…f04/);
+    const first = chains[0].match(/audit entry (\S+)/)[1];
+    expect(chains[1]).toContain(`← ${first}`);
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(log).toHaveTextContent(/Pick an attack above/);
   });
 });
