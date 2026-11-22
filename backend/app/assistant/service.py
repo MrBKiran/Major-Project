@@ -100,8 +100,9 @@ def is_no(message: str) -> bool:
     return _only(_words(message), _NO_STRONG, _NO_FILLER)
 
 
-_CLAIM = re.compile(r"\b(i(?:'ve| have)? (?:booked|cancell?ed|rescheduled|moved)|(?:is|has been|have been) "
-                    r"(?:now )?(?:booked|cancell?ed|rescheduled)|booking (?:is )?confirmed|all set)\b", re.I)
+_CLAIM = re.compile(r"\bI(?:'ve| have)? (?:just |now |already )?(?:booked|cancell?ed|rescheduled|moved)\b", re.I)
+# Only a first-person claim of having acted counts. "Your service is booked for Monday" is how the
+# assistant correctly reports an EXISTING booking, and must not be mistaken for a false claim.
 
 
 def _plain(text: str) -> str:
@@ -131,7 +132,9 @@ def _system_prompt(principal: Principal, channel: str, memory: str, pending: dic
         parts.append("What you remember from earlier conversations (older than the messages below):\n" + memory)
     if pending:
         parts.append(f"Waiting for the owner's yes: \"{pending['summary']}\". If they now agree it will be done "
-                     "for them; if they ask for something different, propose that instead.")
+                     "for them; if they ask for something different, propose that instead. If they say yes "
+                     "after the conversation has moved on, a bare yes will not confirm it: propose it again "
+                     "and ask them to confirm.")
     return "\n\n".join(parts)
 
 
@@ -144,6 +147,8 @@ async def execute_action(principal: Principal, action_id: str) -> dict:
     cannot both run it. If the booking then fails the owner is told why in words.
     """
     action = await asyncio.to_thread(store.get_action, action_id, principal.user_id)
+    if action and action["status"] == "expired":
+        return {"ok": False, "message": "That offer has run out. Ask me again and I'll set it up fresh."}
     if not action or action["status"] != "pending":
         return {"ok": False, "message": "That is no longer waiting for your yes."}
     if not principal.can("appointment:write") or not await asyncio.to_thread(can_access_vin, principal, action["vin"]):
@@ -206,7 +211,9 @@ async def _turn(principal: Principal, message: str, channel: str, vin: str | Non
     done: dict | None = None
     source = "assistant"
 
-    if pending and is_yes(message):
+    # A bare "yes" is consent only if the proposal was the last thing put to the owner; after the
+    # conversation has moved on it may be answering something else (see store.asked_in_last_turn).
+    if pending and is_yes(message) and await asyncio.to_thread(store.asked_in_last_turn, pending["id"], pid):
         done = await execute_action(principal, pending["id"])
         reply, source = done["message"], "action"
     elif pending and is_no(message):

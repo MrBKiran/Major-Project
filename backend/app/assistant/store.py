@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
 from app.db.models import AssistantAction, AssistantMemory, AssistantMessage
 from app.db.session import SessionLocal
@@ -129,10 +129,37 @@ def pending_action(principal_id: str) -> dict | None:
 
 
 def get_action(action_id: str, principal_id: str) -> dict | None:
+    """The owner's own proposal by id. One that has outlived ACTION_TTL comes back as
+    "expired", so a stale card or a replayed request can no more confirm it than a spoken
+    "yes" can (see pending_action)."""
     with SessionLocal() as s:
         row = s.get(AssistantAction, action_id)
         # Someone else's proposal is indistinguishable from one that does not exist.
-        return _action(row) if row and row.principal_id == principal_id else None
+        if not row or row.principal_id != principal_id:
+            return None
+        if row.status == "pending" and _now() - row.created_at > ACTION_TTL:
+            row.status, row.decided_at = "expired", _now()
+            s.commit()
+        return _action(row)
+
+
+def asked_in_last_turn(action_id: str, principal_id: str) -> bool:
+    """Was this proposal put to the owner in the assistant's most recent turn?
+
+    A bare "yes" only means "yes, do that" when "do that?" was the last thing asked. If the
+    conversation has moved on since (a question, an answer, a new topic), "yes" may be
+    answering something else, so it is not taken as consent; the owner can still tap
+    Confirm on the card, which names the action, or be asked again.
+    """
+    with SessionLocal() as s:
+        row = s.get(AssistantAction, action_id)
+        if not row or row.principal_id != principal_id:
+            return False
+        later = s.execute(select(func.count()).select_from(AssistantMessage)
+                          .where(AssistantMessage.principal_id == principal_id,
+                                 AssistantMessage.role == "assistant",
+                                 AssistantMessage.created_at > row.created_at)).scalar_one()
+        return later == 1
 
 
 def decide_action(action_id: str, principal_id: str, status: str) -> bool:

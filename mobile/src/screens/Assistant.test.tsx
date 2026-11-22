@@ -4,7 +4,7 @@
  * what is checked is what the owner sees and what the app sends.
  */
 
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { GarageProvider } from '@/lib/garage';
 import { reply, renderWithSession, SESSION } from '@/test/harness';
@@ -23,7 +23,8 @@ jest.mock('@/lib/voice', () => {
   };
   return {
     __api: api,
-    useRecorder: () => {
+    useRecorder: (onLimit?: unknown) => {
+      (api as Record<string, unknown>).onLimit = onLimit;        // lets a test play the 30 s cut-off
       const [recording, setRecording] = React.useState(false);
       return {
         recording,
@@ -35,7 +36,7 @@ jest.mock('@/lib/voice', () => {
     stopSpeaking: () => api.stopSpeaking(),
   };
 });
-const voice = (jest.requireMock('@/lib/voice') as { __api: Record<string, jest.Mock> }).__api;
+const voice = (jest.requireMock('@/lib/voice') as { __api: Record<string, any> }).__api;
 
 const VIN = 'MH12AB1001';
 const PENDING = { id: 'act-1', kind: 'book', summary: 'Book the Bolero at Kothrud on Mon 23 Nov, 9:00 am' };
@@ -59,7 +60,7 @@ const ask = async (text: string) => {
   await fireEvent.press(screen.getByRole('button', { name: 'Send' }));
 };
 
-beforeEach(() => Object.values(voice).forEach((m) => m.mockClear()));
+beforeEach(() => Object.values(voice).forEach((m) => typeof m?.mockClear === 'function' && m.mockClear()));
 
 it('opens with what it can do and a few things to ask', async () => {
   await open();
@@ -163,6 +164,22 @@ describe('by voice', () => {
     expect(server.calls.find((c) => c.path === '/api/assistant/message')!.body)
       .toEqual({ message: 'mera brake kab tak chalega', channel: 'voice', vin: VIN });
     expect(voice.speak).toHaveBeenCalledWith('Lagbhag saat din.', expect.any(Function));
+  });
+
+  it('still sends what was said when the recording is cut off at the length limit', async () => {
+    const { server } = await open({
+      'POST /api/assistant/transcribe': () => ({ text: 'meri gaadi ka haal batao' }),
+      'POST /api/assistant/message': () => ({ reply: 'Sab theek hai.', pending_action: null, done: null }),
+    });
+    await fireEvent.press(await screen.findByRole('button', { name: 'Talk to the assistant' }));
+    await screen.findByRole('button', { name: 'Stop and send' });
+
+    // The recorder reached its limit by itself; the owner never tapped stop.
+    await act(async () => { await voice.onLimit({ uri: 'file:///long.m4a', name: 'voice.m4a', type: 'audio/mp4' }); });
+
+    expect(await screen.findByText('Sab theek hai.')).toBeOnTheScreen();
+    expect(server.calls.some((c) => c.path === '/api/assistant/transcribe')).toBe(true);
+    expect(server.calls.find((c) => c.path === '/api/assistant/message')!.body.message).toBe('meri gaadi ka haal batao');
   });
 
   it('asks the owner to type instead when the microphone is not allowed', async () => {

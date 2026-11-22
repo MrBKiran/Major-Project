@@ -27,10 +27,17 @@ export type Recorder = {
   stop(): Promise<Clip | null>;
 };
 
-export function useRecorder(): Recorder {
+/**
+ * `onLimit` receives the clip when the recording is cut off at MAX_CLIP_MS. Without it the cut-off
+ * clip would be dropped with nothing shown, because the screen only collects a clip when the owner
+ * taps stop. It is held in a ref so the timer always calls the latest one.
+ */
+export function useRecorder(onLimit?: (clip: Clip | null) => void): Recorder {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recording, setRecording] = useState(false);
   const cutoff = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limitHandler = useRef(onLimit);
+  useEffect(() => { limitHandler.current = onLimit; }, [onLimit]);
 
   const stop = useCallback(async (): Promise<Clip | null> => {
     if (cutoff.current) clearTimeout(cutoff.current);
@@ -52,7 +59,7 @@ export function useRecorder(): Recorder {
     await recorder.prepareToRecordAsync();
     recorder.record();
     setRecording(true);
-    cutoff.current = setTimeout(() => { void stop(); }, MAX_CLIP_MS);
+    cutoff.current = setTimeout(() => { void stop().then((clip) => limitHandler.current?.(clip)); }, MAX_CLIP_MS);
     return true;
   }, [recorder, stop]);
 

@@ -22,7 +22,7 @@ import { Button, Card, Meta, Notice, Txt } from '@/components/ui';
 import { ApiError } from '@/lib/api';
 import { useGarage } from '@/lib/garage';
 import { useSession } from '@/lib/session';
-import { speak, stopSpeaking, useRecorder } from '@/lib/voice';
+import { speak, stopSpeaking, useRecorder, type Clip } from '@/lib/voice';
 import { fonts, space, useTheme } from '@/theme';
 
 interface Turn { id: string; role: 'user' | 'assistant'; text: string }
@@ -46,7 +46,9 @@ export default function Assistant() {
   const { api } = useSession();
   const { state, refreshService } = useGarage();
   const { c, radius, type } = useTheme();
-  const recorder = useRecorder();
+  // At the length limit the recorder cuts itself off; what was said so far is still sent.
+  const clipHandler = useRef<(clip: Clip | null) => void>(() => undefined);
+  const recorder = useRecorder((clip) => clipHandler.current(clip));
   const vin = state.kind === 'ready' ? state.vin : undefined;
 
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -130,10 +132,14 @@ export default function Assistant() {
       }
       return;
     }
+    await sendClip(await recorder.stop());
+  }
+
+  /** Transcribe a finished clip and ask what it says. Used for a tap on stop, and for the cut-off at the length limit. */
+  async function sendClip(clip: Clip | null) {
     setBusy(true);
     let heard: string | null = null;
     try {
-      const clip = await recorder.stop();
       if (clip) {
         const form = new FormData();
         // React Native's FormData takes a { uri, name, type } descriptor for a file.
@@ -148,6 +154,9 @@ export default function Assistant() {
     }
     if (heard) await send(heard, 'voice');
   }
+
+  // Kept current each render, so the recorder's cut-off always reaches this render's sendClip.
+  useEffect(() => { clipHandler.current = (clip) => { void sendClip(clip); }; });
 
   async function startOver() {
     stopSpeaking();

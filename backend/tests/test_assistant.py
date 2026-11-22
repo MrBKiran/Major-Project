@@ -234,6 +234,60 @@ def test_a_booking_can_be_cancelled_through_a_proposal(client, owner, model):
     assert send(client, owner, "yes")["done"]["ok"] and bookings() == []
 
 
+def test_a_yes_after_the_conversation_has_moved_on_is_not_consent(client, owner, model):
+    predict()
+    propose_first_slot(model, a_slot(client, owner))
+    send(client, owner, "book it")
+    model.steps = [say("About ₹5,200. Want me to explain the fault code too?")]
+    send(client, owner, "what does it cost?")
+    asked = len(model.calls)
+
+    model.steps = [say("Sure: it means the pump is wearing out.")]
+    out = send(client, owner, "yes")
+    assert len(model.calls) == asked + 1                  # the model answered; the rules did not act
+    assert bookings() == [] and out["done"] is None
+    assert out["pending_action"] is not None              # the card is still there to tap, or to be asked again
+    assert "bare yes will not confirm" in model.calls[-1][0][0]["content"]
+
+
+def test_asking_again_makes_a_fresh_yes_count(client, owner, model):
+    predict()
+    slot = a_slot(client, owner)
+    propose_first_slot(model, slot)
+    send(client, owner, "book it")
+    model.steps = [say("About ₹5,200.")]
+    send(client, owner, "what does it cost?")
+    propose_first_slot(model, slot)                       # the model offers it again
+    send(client, owner, "ok, go ahead and book it for me please")
+    assert send(client, owner, "yes")["done"]["ok"] and len(bookings()) == 1
+
+
+def test_a_stale_card_cannot_be_confirmed(client, owner, model):
+    predict()
+    propose_first_slot(model, a_slot(client, owner))
+    action = send(client, owner, "book it")["pending_action"]
+    with engine.begin() as c:
+        c.execute(text("UPDATE assistant_actions SET created_at = now() - interval '31 minutes'"))
+    out = client.post(f"/api/assistant/actions/{action['id']}/confirm", headers=bearer(owner)).json()
+    assert out["ok"] is False and "run out" in out["message"]
+    assert bookings() == []
+    assert client.get("/api/assistant/thread", headers=bearer(owner)).json()["pending_action"] is None
+
+
+def test_a_reply_that_reports_an_existing_booking_is_left_alone(client, owner, model):
+    for line in ("Yes, your Bolero is booked for Mon 23 Nov at 11:00 am.",
+                 "Your booking has been confirmed for Monday.",
+                 "The service has been booked at Kothrud."):
+        model.steps = [say(line)]
+        assert send(client, owner, "is my car booked?")["reply"] == line
+
+
+@pytest.mark.parametrize("claim", ["I've booked it for Monday.", "I have just cancelled it.", "Done, I rescheduled it."])
+def test_a_first_person_claim_nobody_acted_on_is_still_replaced(client, owner, model, claim):
+    model.steps = [say(claim)]
+    assert send(client, owner, "book me in")["reply"].startswith("I haven't changed anything yet.")
+
+
 def test_a_reply_a_model_says_twice_is_said_once(client, owner, model):
     line = "Aapki Bolero ki water pump mein dikkat aa rahi hai, soon."
     model.steps = [say(line + line)]
