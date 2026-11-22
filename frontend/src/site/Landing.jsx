@@ -14,12 +14,15 @@
  */
 
 import "@fontsource/space-grotesk/300.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Ticker } from "../fx";
 import { reducedMotion } from "../fx/gsap.js";
 import { navigate } from "../route.js";
 import { BrandMark } from "../ui.jsx";
 import Agents from "./Agents.jsx";
+import Calculator from "./Calculator.jsx";
 import { DetailContext, DetailToggle } from "./detail.jsx";
+import FloatingCards from "./FloatingCards.jsx";
 import Journey from "./Journey.jsx";
 import LiveRun from "./LiveRun.jsx";
 import Screens from "./Screens.jsx";
@@ -33,18 +36,39 @@ const LINKS = [
   ["screens", "Apps"],
 ];
 
+const days = (v) => `${Math.round(v)} days`;
+const rupees = (v) => `₹${Math.round(v).toLocaleString("en-IN")}`;
+const whole = (v) => String(Math.round(v));
+const ofFive = (v) => `${Math.round(v)} of 5`;
+
 const FACTS = [
-  ["9 days", "of warning, before a dashboard light would come on"],
-  ["₹2,400", "to fix a worn water pump early — not ₹18,500 after a breakdown"],
-  ["7", "AI helpers, each allowed to do only its own job"],
-  ["5 of 5", "practice attacks stopped by the security guard"],
+  [9, days, "of warning, before a dashboard light would come on"],
+  [2400, rupees, "to fix a worn water pump early — not ₹18,500 after a breakdown"],
+  [7, whole, "AI helpers, each allowed to do only its own job"],
+  [5, ofFive, "practice attacks stopped by the security guard"],
 ];
+
+/** A figure that counts up the first time it is on screen, and is simply there where that cannot be seen. */
+function CountOnView({ to, format }) {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(() => typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    if (seen || !ref.current) return undefined;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setSeen(true); io.disconnect(); }
+    }, { threshold: 0.6 });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [seen]);
+  return <span ref={ref}><Ticker value={seen ? to : 0} format={format} duration={1.2} /></span>;
+}
 
 export default function Landing() {
   const [active, setActive] = useState(null);
   const [tech, setTech] = useState(false);
   const detail = useMemo(() => ({ on: tech, set: setTech }), [tech]);
   const reduce = reducedMotion();
+  const hero = useRef(null);
 
   useEffect(() => {
     const before = document.title;
@@ -96,7 +120,8 @@ export default function Landing() {
         </header>
 
         <main>
-          <section id="top" className="s-hero" aria-labelledby="hero-title">
+          <section id="top" ref={hero} className="s-hero" aria-labelledby="hero-title">
+            <FloatingCards bounds={hero} />
             <div className="s-wrap">
               <p className="s-chip"><i className="s-dot" data-tone="green" />AI that looks after your car</p>
               <h1 id="hero-title" className="s-h1">
@@ -132,12 +157,13 @@ export default function Landing() {
 
             <div className="s-wrap">
               <ul className="s-facts">
-                {FACTS.map(([k, v]) => <li key={k}><b>{k}</b><span>{v}</span></li>)}
+                {FACTS.map(([to, format, text]) => <li key={text}><b><CountOnView to={to} format={format} /></b><span>{text}</span></li>)}
               </ul>
             </div>
           </section>
 
           <Journey />
+          <Calculator />
           <Agents />
           <Shield />
           <Screens />

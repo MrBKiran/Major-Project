@@ -35,7 +35,8 @@ function controls(source) {
 describe("form controls", () => {
   it.each(files(SRC).map((f) => [f.slice(SRC.length + 1)]))("are outlined strongly enough in %s", (rel) => {
     const weak = controls(readFileSync(join(SRC, rel), "utf8"))
-      .filter(({ tag }) => /type="(checkbox|radio|hidden|file)"/.test(tag) === false)
+      // A slider is found by its track and thumb, not by a text field's outline.
+      .filter(({ tag }) => /type="(checkbox|radio|hidden|file|range)"/.test(tag) === false)
       .filter(({ tag }) => !/border-border-strong|inputCls|edgeStrong/.test(tag))
       .map(({ tag, line }) => `${line}: ${tag.replace(/\s+/g, " ").slice(0, 100)}`);
     expect(weak).toEqual([]);

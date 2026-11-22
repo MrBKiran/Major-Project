@@ -42,6 +42,7 @@ describe("public landing page", () => {
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "See it in action",
       "From a warning sign to a repair.",
+      "What waiting costs.",
       "Seven AI helpers. One team.",
       "Every action is checked first.",
       "Three screens. One story.",
@@ -158,5 +159,79 @@ describe("the security log", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(log).toHaveTextContent(/Pick an attack above/);
+  });
+});
+
+describe("what waiting costs", () => {
+  const section = () => screen.getByRole("region", { name: "What waiting costs." });
+  const amount = () => section().querySelector(".s-calc-total");
+
+  it("opens on a water pump, fixed early, at the repair price", () => {
+    render(<Landing />);
+    expect(within(section()).getByRole("radio", { name: "Water pump" })).toHaveAttribute("aria-checked", "true");
+    expect(within(section()).getByRole("radio", { name: "Fix it early" })).toHaveAttribute("aria-checked", "true");
+    expect(within(section()).getByText("You pay")).toBeInTheDocument();
+    expect(amount()).toHaveTextContent("₹2,400");
+    expect(section()).toHaveTextContent(/about 90 minutes in the workshop/);
+  });
+
+  it("flips to the breakdown price, and says what breaks", () => {
+    render(<Landing />);
+    fireEvent.click(within(section()).getByRole("radio", { name: "Wait for the breakdown" }));
+    expect(within(section()).getByText("You would pay")).toBeInTheDocument();
+    expect(amount()).toHaveTextContent("₹18,500");
+    expect(section()).toHaveTextContent(/head gasket/);
+    expect(section()).toHaveTextContent(/7\.7×/);                    // 18,500 / 2,400
+  });
+
+  it("changes the part, with its own pair, its own notice and a safety note where it applies", () => {
+    render(<Landing />);
+    fireEvent.click(within(section()).getByRole("radio", { name: "Oil pump" }));
+    expect(amount()).toHaveTextContent("₹7,800");
+    expect(section()).toHaveTextContent(/A safety part\./);
+    expect(section()).toHaveTextContent(/about 6 days of notice/);
+    fireEvent.click(within(section()).getByRole("radio", { name: "Wait for the breakdown" }));
+    expect(amount()).toHaveTextContent("₹65,000");
+    expect(section()).toHaveTextContent(/8\.3×/);                    // 65,000 / 7,800
+
+    fireEvent.click(within(section()).getByRole("radio", { name: "Battery" }));
+    expect(section()).not.toHaveTextContent(/A safety part\./);
+    expect(amount()).toHaveTextContent("₹9,000");
+  });
+
+  it("is a pair of radio groups, moved by the arrow keys", () => {
+    render(<Landing />);
+    const early = within(section()).getByRole("radio", { name: "Fix it early" });
+    fireEvent.keyDown(early, { key: "ArrowRight" });
+    expect(within(section()).getByRole("radio", { name: "Wait for the breakdown" })).toHaveAttribute("aria-checked", "true");
+    expect(within(section()).getByRole("radio", { name: "Wait for the breakdown" })).toHaveFocus();
+
+    const pump = within(section()).getByRole("radio", { name: "Water pump" });
+    fireEvent.keyDown(pump, { key: "ArrowLeft" });                      // wraps to the last part
+    expect(within(section()).getByRole("radio", { name: "Oil pump" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("lets the bars be pressed as well", () => {
+    render(<Landing />);
+    fireEvent.click(within(section()).getByRole("button", { name: /Wait for the breakdown/ }));
+    expect(amount()).toHaveTextContent("₹18,500");
+    fireEvent.click(within(section()).getByRole("button", { name: /Fix it early/ }));
+    expect(amount()).toHaveTextContent("₹2,400");
+  });
+
+  it("is plain that the figures are a demo's and a warning is a prediction", () => {
+    render(<Landing />);
+    expect(section()).toHaveTextContent(/demo fleet/);
+    expect(section()).toHaveTextContent(/not a promise/);
+  });
+});
+
+describe("the facts under the hero", () => {
+  it("show their figures (they count up when seen, and are simply there where that cannot be seen)", () => {
+    render(<Landing />);
+    const facts = document.querySelector(".s-facts");
+    expect(facts).toHaveTextContent("9 days");
+    expect(facts).toHaveTextContent("₹2,400");
+    expect(facts).toHaveTextContent("5 of 5");
   });
 });

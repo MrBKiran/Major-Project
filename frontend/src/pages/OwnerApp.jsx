@@ -19,6 +19,7 @@
  * and the booking are all live.
  */
 
+import { motion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { color } from "@autosaarthi/tokens";
 import { api } from "../api.js";
@@ -33,8 +34,15 @@ import {
   ACCENT, CostRows, GhostButton, Headline, Meta, MONO, Pill,
   PrimaryButton, SANS, Spark, tokens,
 } from "../device.jsx";
-import { gsap, reducedMotion } from "../fx";
+import { gsap, reducedMotion, Ticker } from "../fx";
 import { micAvailable, speak, speechAvailable, stopSpeaking, useRecorder } from "../voice.js";
+import { BrandMark } from "../ui.jsx";
+import { buildIcs, downloadIcs, mapsUrl } from "./owner/calendar.js";
+import { ReadingDetail } from "./owner/ReadingDetail.jsx";
+import { ScrubChart } from "./owner/ScrubChart.jsx";
+import { Segmented } from "./owner/Segmented.jsx";
+import { ToastProvider, useToast } from "./owner/Toast.jsx";
+import { WaitCalc } from "./owner/WaitCalc.jsx";
 import { HealthRing, OwnerStage } from "./owner/Stage.jsx";
 
 /** Readings taken with the ignition off are not evidence of wear — the backend's
@@ -80,8 +88,8 @@ export default function OwnerApp({ standalone = false }) {
   // A first message for the assistant to send on arrival. On the web the assistant is the only way
   // to book, so "Book a service" opens it already asking for one.
   const [ask, setAsk] = useState(null);
-  const go = useCallback((to) => {
-    setAsk(to === "book" ? "Book me a service" : null);
+  const go = useCallback((to, message = null) => {
+    setAsk(to === "book" ? "Book me a service" : message);
     setScreen(to === "book" ? "agent" : to);
   }, []);
   const [booking, setBooking] = useState(null);
@@ -162,6 +170,7 @@ export default function OwnerApp({ standalone = false }) {
   if (standalone) {
     return (
       <NightProvider value={night}>
+<ToastProvider>
       <div
         style={{
           // svh, not vh: mobile browsers shrink the visual viewport when the
@@ -190,12 +199,14 @@ export default function OwnerApp({ standalone = false }) {
         </div>
         {body}
       </div>
-      </NightProvider>
+      </ToastProvider>
+</NightProvider>
     );
   }
 
   return (
     <NightProvider value={night}>
+<ToastProvider>
     <div className="mx-auto max-w-[1280px]">
       {!detail || error ? (
         <WebPanel>{body}</WebPanel>
@@ -222,7 +233,8 @@ export default function OwnerApp({ standalone = false }) {
         </div>
       )}
     </div>
-    </NightProvider>
+    </ToastProvider>
+</NightProvider>
   );
 }
 
@@ -293,6 +305,9 @@ function LoadingPane() {
   return (
     <div role="status" style={{ padding: 24, display: "grid", gap: 12 }}>
       <span className="sr-only">Loading your car…</span>
+      <div aria-hidden="true" style={{ display: "grid", placeItems: "center", padding: "4px 0 8px" }}>
+        <BrandMark className="is-loading h-10 w-10 rounded-[12px]" />
+      </div>
       {[64, 200, 120].map((h, i) => (
         <div key={i} aria-hidden="true" style={{ height: h, borderRadius: 14, background: t.hatch }} />
       ))}
@@ -349,7 +364,7 @@ function Home({ detail, top, economics, booking, go, ring = false }) {
       ) : top ? (
         <NowCard top={top} economics={economics} go={go} ring={ring} />
       ) : (
-        <HealthyCard detail={detail} />
+        <HealthyCard detail={detail} go={go} />
       )}
 
       {(booking?.booked || !top) && <AskLink go={go} />}
@@ -452,11 +467,12 @@ function WebPanel({ title, children, className = "" }) {
 
 const fmtReading = (v) => (typeof v === "number" ? (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)) : "—");
 
-/** The six readings the agent watches, each with its latest value and a trace. */
-function SignalsGrid({ detail }) {
+/** The six readings the agent watches, each with its latest value and a trace. Press one to open it. */
+function SignalsGrid({ detail, go }) {
   const night = useNight();
   const t = tokens(night);
   const series = liveRows(detail.series);
+  const [open, setOpen] = useState(null);
   const signals = ["coolant_temp", "lub_oil_pressure", "battery_voltage", "fuel_pressure", "brake_fluid_pct", "speed"];
   if (series.length < 2) {
     return (
@@ -466,20 +482,39 @@ function SignalsGrid({ detail }) {
     );
   }
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18, padding: 20 }}>
-      {signals.map((s) => {
-        const values = series.map((r) => r[s]);
-        const latest = [...values].reverse().find((x) => typeof x === "number");
-        return (
-          <div key={s}>
-            <Meta night={night}>{signalLabel(s)}</Meta>
-            <div style={{ fontFamily: MONO, fontSize: 15, color: t.ink, margin: "2px 0 6px" }}>
-              {fmtReading(latest)}{SIGNALS[s]?.unit ?? ""}
-            </div>
-            <Spark night={night} w={120} h={30} values={values} tone={tokens(night).icon} />
-          </div>
-        );
-      })}
+    <div style={{ padding: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+        {signals.map((s) => {
+          const values = series.map((r) => r[s]);
+          const latest = [...values].reverse().find((x) => typeof x === "number");
+          const on = open === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-expanded={on}
+              onClick={() => setOpen(on ? null : s)}
+              style={{
+                textAlign: "left", cursor: "pointer", borderRadius: 10, padding: "8px 10px",
+                background: on ? t.card : "transparent", border: `1px solid ${on ? t.edgeStrong : "transparent"}`,
+                transition: "background 160ms ease, border-color 160ms ease",
+              }}
+            >
+              <Meta night={night}>{signalLabel(s)}</Meta>
+              <div style={{ fontFamily: MONO, fontSize: 15, color: t.ink, margin: "2px 0 6px" }}>
+                {fmtReading(latest)}{SIGNALS[s]?.unit ?? ""}
+              </div>
+              <Spark night={night} w={120} h={30} values={values} tone={tokens(night).icon} />
+            </button>
+          );
+        })}
+      </div>
+      {open && (
+        <ReadingDetail
+          signal={open} rows={series} onClose={() => setOpen(null)}
+          onAsk={go ? (question) => go("agent", question) : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -519,7 +554,7 @@ function HomeWeb({ detail, top, economics, booking, go, onOpenWhy }) {
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-2">
-        <WebPanel title="Live readings"><SignalsGrid detail={detail} /></WebPanel>
+        <WebPanel title="Live readings"><SignalsGrid detail={detail} go={go} /></WebPanel>
         <WebPanel title="Service history">
           <div style={{ padding: 20 }}><Timeline history={history} go={go} /></div>
         </WebPanel>
@@ -545,9 +580,10 @@ function TimelineNode({ title, sub, dot }) {
 
 /** The quiet screen. One sentence, one number pair, ten flat sparklines —
  *  visible proof the system is watching without asking anything of the owner. */
-export function HealthyCard({ detail, signals: showSignals = true }) {
+export function HealthyCard({ detail, signals: showSignals = true, go }) {
   const night = useNight();
   const t = tokens(night);
+  const [open, setOpen] = useState(null);
   const series = liveRows(detail.series);
   const signals = ["coolant_temp", "lub_oil_pressure", "battery_voltage", "fuel_pressure", "brake_fluid_pct", "speed"];
   return (
@@ -573,14 +609,29 @@ export function HealthyCard({ detail, signals: showSignals = true }) {
           gap: 12, paddingTop: 16, borderTop: `1px solid ${t.edge}`,
         }}>
           {signals.map((s) => (
-            <div key={s}>
+            <button
+              key={s}
+              type="button"
+              aria-expanded={open === s}
+              onClick={() => setOpen(open === s ? null : s)}
+              style={{
+                textAlign: "left", cursor: "pointer", borderRadius: 8, padding: 4, margin: -4,
+                background: "transparent", border: `1px solid ${open === s ? t.edgeStrong : "transparent"}`,
+              }}
+            >
               <Spark night={night} w={90} h={22} values={series.map((r) => r[s])} tone={tokens(night).icon} />
               <span style={{ display: "block", fontFamily: SANS, fontSize: 12, color: t.dim, marginTop: 4 }}>
                 {signalLabel(s)}
               </span>
-            </div>
+            </button>
           ))}
         </div>
+      )}
+      {open && (
+        <ReadingDetail
+          signal={open} rows={series} onClose={() => setOpen(null)}
+          onAsk={go ? (question) => go("agent", question) : undefined}
+        />
       )}
       <p style={{ fontFamily: SANS, fontSize: 13, color: t.faint, marginTop: 16, marginBottom: 0 }}>
         We only contact you when something is actually changing.
@@ -596,6 +647,7 @@ export function NowCard({ top, economics = null, go, ring = false }) {
   const night = useNight();
   const t = tokens(night);
   const days = top.days_to_failure;
+  const [waiting, setWaiting] = useState(false);
 
   return (
     <div style={{
@@ -626,6 +678,23 @@ export function NowCard({ top, economics = null, go, ring = false }) {
       {economics && (
         <div style={{ marginTop: 18 }}>
           <CostRows night={night} rows={costRows(economics)} />
+        </div>
+      )}
+
+      {economics && days != null && (
+        <div style={{ marginTop: 14 }}>
+          <button
+            type="button"
+            aria-expanded={waiting}
+            onClick={() => setWaiting((w) => !w)}
+            style={{
+              width: "100%", cursor: "pointer", borderRadius: 12, padding: "13px 16px", background: "transparent",
+              border: `1px solid ${t.edge}`, color: t.ink, fontFamily: SANS, fontSize: 14, fontWeight: 500,
+            }}
+          >
+            {waiting ? "Hide: what if I wait?" : "What if I wait?"}
+          </button>
+          {waiting && <div className="pop-in" style={{ marginTop: 10 }}><WaitCalc economics={economics} days={days} /></div>}
         </div>
       )}
 
@@ -678,9 +747,19 @@ function centreName(booking) {
 
 /* ── P08 — why this part ─────────────────────────────────────────────────── */
 
+/** The rows of the last `hours` hours, by the car's own timestamps; all of them if it has none. */
+function windowRows(rows, hours) {
+  const stamps = rows.map((r) => Date.parse(r.ts));
+  const last = stamps.length ? stamps[stamps.length - 1] : NaN;
+  if (!Number.isFinite(last)) return rows;
+  const kept = rows.filter((_, i) => stamps[i] >= last - hours * 3600_000);
+  return kept.length >= 2 ? kept : rows;
+}
+
 function WhyThisPart({ detail, top, economics, back, go }) {
   const night = useNight();
   const t = tokens(night);
+  const [range, setRange] = useState("24");
   if (!top) {
     return (
       <>
@@ -703,7 +782,7 @@ function WhyThisPart({ detail, top, economics, back, go }) {
   };
   const series = liveRows(detail.series);
   const values = signal ? series.map((r) => r[signal.key]).filter((x) => typeof x === "number") : [];
-  const latest = values.length ? values[values.length - 1] : null;
+  const shownRows = windowRows(series, Number(range));
   const dtcs = detail.dtc_codes || [];
   const sure = confidence(top.failure_prob);
 
@@ -738,16 +817,28 @@ function WhyThisPart({ detail, top, economics, back, go }) {
               marginTop: 18, border: `1px solid ${t.edge}`, borderRadius: 14,
               padding: 16, background: t.card,
             }}>
-              <Wipe><Spark night={night} w={340} h={64} values={values} tone={ACCENT} /></Wipe>
-              <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between" }}>
+              <div style={{ marginBottom: 14 }}>
+                <Segmented
+                  label="Time range"
+                  value={range}
+                  onChange={setRange}
+                  options={[{ value: "6", label: "Last 6 hours" }, { value: "24", label: "Last 24 hours" }]}
+                />
+              </div>
+              <Wipe>
+                <ScrubChart
+                  values={shownRows.map((r) => r[signal.key])}
+                  times={shownRows.map((r) => r.ts)}
+                  unit={evidence.unit}
+                  label={`${cap(evidence.name)} over the last ${range} hours`}
+                  tone={ACCENT}
+                  h={72}
+                />
+              </Wipe>
+              <div style={{ marginTop: 10 }}>
                 <Meta night={night}>
-                  {cap(evidence.name)} · last 24 h
+                  {cap(evidence.name)} · last {range} h · move along it to read a value
                 </Meta>
-                {latest != null && (
-                  <span style={{ fontFamily: MONO, fontSize: 13, color: t.ink }}>
-                    {latest.toFixed(1)}{evidence.unit}
-                  </span>
-                )}
               </div>
             </div>
           </>
@@ -1137,6 +1228,29 @@ function Booked({ detail, top, economics, booking, back }) {
   const night = useNight();
   const t = tokens(night);
   const card = useRef(null);
+  const toast = useToast();
+
+  function addToCalendar() {
+    const ics = booking?.slot_start && buildIcs({
+      uid: booking.appointment_id || booking.slot_start,
+      title: `Service: ${top ? cap(componentLabel(top.component)) : "check-up"}, ${detail.vehicle.model}`,
+      start: booking.slot_start,
+      location: [centreName(booking), booking.city].filter(Boolean).join(", "),
+      description: `Booking ${booking.appointment_id || ""} for ${detail.vehicle.model} (${detail.vehicle.vin}).`,
+    });
+    if (!ics) { toast("This booking has no time to add."); return; }
+    downloadIcs(`autosaarthi-${booking.appointment_id || "booking"}.ics`, ics);
+    toast("Calendar file ready. Open it to save the booking.");
+  }
+
+  async function copyReference() {
+    try {
+      await navigator.clipboard.writeText(booking.appointment_id);
+      toast("Booking number copied");
+    } catch {
+      toast(`Booking number: ${booking.appointment_id}`);
+    }
+  }
 
   // Done. The receipt drops in like a ticket and a handful of confetti bursts
   // from it — the one moment in the app that is allowed to celebrate, because
@@ -1200,7 +1314,24 @@ function Booked({ detail, top, economics, booking, back }) {
           before, and the car will show it on the dash when you next park.
         </p>
 
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: 18, display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {booking?.slot_start && <GhostButton night={night} onClick={addToCalendar}>Add to calendar</GhostButton>}
+          {centreName(booking) && (
+            <a
+              href={mapsUrl([centreName(booking), booking.city].filter(Boolean).join(", "))}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-block", borderRadius: 12, padding: "13px 16px", border: `1px solid ${t.edge}`,
+                color: t.ink, fontFamily: SANS, fontSize: 14, fontWeight: 500, textDecoration: "none",
+              }}
+            >
+              Directions
+            </a>
+          )}
+          {booking?.appointment_id && <GhostButton night={night} onClick={copyReference}>Copy booking number</GhostButton>}
+        </div>
+        <div style={{ marginTop: 10 }}>
           <GhostButton night={night} onClick={back}>Back to my car</GhostButton>
         </div>
       </div>
@@ -1213,10 +1344,13 @@ function Booked({ detail, top, economics, booking, back }) {
 function History({ detail, back }) {
   const night = useNight();
   const t = tokens(night);
-  const rows = detail.maintenance_history || [];
+  const all = detail.maintenance_history || [];
+  const [sort, setSort] = useState("new");
   const root = useRef(null);
+  const rows = sort === "cost" ? [...all].sort((a, b) => (b.cost ?? 0) - (a.cost ?? 0)) : all;
+  const total = all.reduce((sum, h) => sum + (typeof h.cost === "number" ? h.cost : 0), 0);
 
-  // Visits rise in one after another, newest first.
+  // Visits rise in one after another, newest first, when the screen opens.
   useLayoutEffect(() => {
     if (!root.current || reducedMotion()) return undefined;
     const ctx = gsap.context(() => {
@@ -1232,43 +1366,65 @@ function History({ detail, back }) {
     <>
       <ScreenHeader title="Service history" back={back} />
       <div ref={root} style={{ padding: "18px 18px 28px" }}>
-        {rows.length === 0 ? (
+        {all.length === 0 ? (
           <p style={{ fontFamily: SANS, fontSize: 14, color: t.dim }}>
             No service visits on record for this vehicle yet.
           </p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {rows.map((h, i) => (
-              <div key={i} className="hist-row" style={{
-                border: `1px solid ${t.edge}`, borderRadius: 14, padding: 15, background: t.card,
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-                  <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 600, color: t.ink }}>
-                    {cap(String(h.service_type || "service").replace(/_/g, " "))}
-                  </span>
-                  {h.cost != null && (
-                    <span style={{ fontFamily: MONO, fontSize: 14, color: t.ink }}>{inr(h.cost)}</span>
-                  )}
-                </div>
-                <Meta night={night} mono>
-                  {formatDate(h.date)}
-                  {h.km_at_service ? ` · ${Number(h.km_at_service).toLocaleString("en-IN")} km` : ""}
-                </Meta>
-                {Array.isArray(h.components_replaced) && h.components_replaced.length > 0 && (
-                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {h.components_replaced.map((c) => (
-                      <span key={c} style={{
-                        fontFamily: MONO, fontSize: 11, color: t.dim,
-                        background: t.hatch, padding: "3px 8px", borderRadius: 5,
-                      }}>
-                        {String(c).replace(/_/g, " ")}
-                      </span>
-                    ))}
-                  </div>
-                )}
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div>
+                <Meta night={night}>{`${all.length} ${all.length === 1 ? "visit" : "visits"} · spent in total`}</Meta>
+                <div><Ticker value={total} style={{ fontFamily: MONO, fontSize: 27, fontWeight: 600, color: t.ink }} /></div>
               </div>
-            ))}
-          </div>
+            </div>
+            {all.length > 1 && (
+              <div style={{ marginBottom: 14 }}>
+                <Segmented
+                  label="Order of visits"
+                  value={sort}
+                  onChange={setSort}
+                  options={[{ value: "new", label: "Newest first" }, { value: "cost", label: "Costliest first" }]}
+                />
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {rows.map((h) => (
+                <motion.div
+                  key={`${h.date}-${h.service_type}-${h.cost}`}
+                  layout={!reducedMotion()}
+                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  className="hist-row"
+                  style={{ border: `1px solid ${t.edge}`, borderRadius: 14, padding: 15, background: t.card }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                    <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 600, color: t.ink }}>
+                      {cap(String(h.service_type || "service").replace(/_/g, " "))}
+                    </span>
+                    {h.cost != null && (
+                      <span style={{ fontFamily: MONO, fontSize: 14, color: t.ink }}>{inr(h.cost)}</span>
+                    )}
+                  </div>
+                  <Meta night={night} mono>
+                    {formatDate(h.date)}
+                    {h.km_at_service ? ` · ${Number(h.km_at_service).toLocaleString("en-IN")} km` : ""}
+                  </Meta>
+                  {Array.isArray(h.components_replaced) && h.components_replaced.length > 0 && (
+                    <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {h.components_replaced.map((c) => (
+                        <span key={c} style={{
+                          fontFamily: MONO, fontSize: 11, color: t.dim,
+                          background: t.hatch, padding: "3px 8px", borderRadius: 5,
+                        }}>
+                          {String(c).replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </>

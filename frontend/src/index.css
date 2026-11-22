@@ -288,6 +288,24 @@ p {
 @keyframes lane-run { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
 .brand-mark:hover .brand-dash { animation: lane-run 700ms ease-in-out infinite; }
 .brand-mark:hover .brand-dash:nth-of-type(2) { animation-delay: 140ms; }
+/* The "what if I wait?" slider: the track is drawn by the component (safe, then too late), so the
+   browser's own track is made invisible and only the thumb is drawn here. */
+.wait-range { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+.wait-range::-webkit-slider-runnable-track { height: 24px; background: transparent; }
+.wait-range::-moz-range-track { height: 24px; background: transparent; }
+.wait-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%;
+  background: var(--color-accent); border: 0;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.92), 0 2px 8px rgb(0 0 0 / 0.4);
+}
+.wait-range::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--color-accent); border: 0;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.92), 0 2px 8px rgb(0 0 0 / 0.4);
+}
+.wait-range:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: 99px; }
+/* The mark as a loader: the road's dashes run while the car's data is on its way. */
+.brand-mark.is-loading .brand-dash { animation: lane-run 700ms ease-in-out infinite; }
+.brand-mark.is-loading .brand-dash:nth-of-type(2) { animation-delay: 140ms; }
 
 /* ── Depth ────────────────────────────────────────────────────────────────
    Surfaces sit above the page on layered shadows (a hairline highlight on the
@@ -359,6 +377,7 @@ button.bg-accent-deep:active:not(:disabled) {
   .road-scan, .road-car, .road-tail { animation: none !important; }
   .tilt:hover, .tilt-soft:hover, button.bg-accent-deep:hover, button.bg-accent-deep:active { transform: none !important; }
   .brand-mark:hover { animation: none !important; }
+  .brand-mark.is-loading .brand-dash { animation: none !important; }
   /* No stream of dashes: hold them at fixed distances so the road still reads. */
   .road-dash { animation: none !important; transform: scale(var(--s, 1)) !important; opacity: 1 !important; }
   .shiny { background: none; color: var(--color-fg-muted); }
