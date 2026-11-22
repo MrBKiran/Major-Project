@@ -1,5 +1,7 @@
-# Book the first open slot, see it confirmed, then cancel it — so the demo data
-# ends as it began (one cancelled row aside).
+# Book the first open slot, see it confirmed, then cancel it.
+# The demo data usually starts with a booking the agent made for Aditi; if so it is
+# cancelled first (Home hides "Book a service" while a booking stands). Re-seed with
+# backend/scripts/reset_demo.py to get it back.
 appId: io.autosaarthi.owner
 name: Book a service, then cancel it
 ---
@@ -8,8 +10,22 @@ name: Book a service, then cancel it
     env:
       EMAIL: aditi.nair@example.in
 - extendedWaitUntil:
-    visible: "Book a service"
+    visible: "Book a service|Change or cancel"
     timeout: 30000
+# Every action on the booking screen ends back on Home.
+- runFlow:
+    when:
+      visible: "Change or cancel"
+    commands:
+      - tapOn: "Change or cancel"
+      - extendedWaitUntil:
+          visible: "Booked for .*"
+          timeout: 15000
+      - tapOn: "Cancel this booking"
+      - tapOn: "Yes, cancel it"
+      - extendedWaitUntil:
+          visible: "Book a service"
+          timeout: 15000
 - tapOn: "Book a service"
 - extendedWaitUntil:
     visible: "Open slots near you"
@@ -23,11 +39,16 @@ name: Book a service, then cancel it
 - tapOn:
     text: "Book (Mon|Tue|Wed|Thu|Fri|Sat|Sun) .*"
 - extendedWaitUntil:
+    visible: "Service booked"
+    timeout: 15000
+- assertNotVisible: "Book a service"
+- tapOn: "Change or cancel"
+- extendedWaitUntil:
     visible: "Booked for .*"
     timeout: 15000
 - tapOn: "Cancel this booking"
 - tapOn: "Yes, cancel it"
 - extendedWaitUntil:
-    visible: "Open slots near you"
+    visible: "Book a service"
     timeout: 15000
-- assertNotVisible: "Booked for .*"
+- assertNotVisible: "Service booked"
