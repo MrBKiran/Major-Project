@@ -114,7 +114,7 @@ function App() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="evidence" options={{ headerShown: true, title: OWNER.whyThisPart }} />
         <Stack.Screen name="book" options={{ headerShown: true, title: OWNER.book }} />
-        <Stack.Screen name="agent" options={{ headerShown: true, title: 'AutoSaarthi agent' }} />
+        <Stack.Screen name="agent" options={{ headerShown: true, title: 'Assistant' }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" />

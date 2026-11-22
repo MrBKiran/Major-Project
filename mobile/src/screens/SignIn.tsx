@@ -1,5 +1,5 @@
 /**
- * Sign in: email and password, or a code sent to the phone — whichever the
+ * Sign in: email and password, a code sent to the phone, or Google — whichever the
  * server has switched on (GET /api/auth/config) — then the second factor if the
  * account has one. The phone gets its session token in the response body and
  * keeps it in secure storage (src/lib/api.ts).
@@ -11,6 +11,7 @@ import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
 import { Rise, RoadStrip } from '@/components/fx';
 import { Button, Field, Meta, Notice, Screen, Txt } from '@/components/ui';
 import { ApiError } from '@/lib/api';
+import { googleCredential } from '@/lib/google';
 import { useSession } from '@/lib/session';
 import { space, useTheme } from '@/theme';
 
@@ -20,6 +21,8 @@ export default function SignIn() {
   const session = useSession();
   const { c, radius } = useTheme();
   const [phoneOffered, setPhoneOffered] = useState(false);
+  // The web client id Google's sheet must be asked for; null when the server has Google off.
+  const [googleId, setGoogleId] = useState<string | null>(null);
   // Unchosen until the owner picks: the phone code when offered, else email.
   const [chosen, setMethod] = useState<Method | null>(null);
   const [email, setEmail] = useState('');
@@ -36,9 +39,12 @@ export default function SignIn() {
   const inFlight = useRef(false);
 
   useEffect(() => {
-    session.api.get<{ methods: string[] }>('/api/auth/config')
-      .then((cfg) => setPhoneOffered(cfg.methods.includes('phone_otp')))
-      .catch(() => setPhoneOffered(false));
+    session.api.get<{ methods: string[]; google_client_id?: string | null }>('/api/auth/config')
+      .then((cfg) => {
+        setPhoneOffered(cfg.methods.includes('phone_otp'));
+        setGoogleId(cfg.methods.includes('google') && cfg.google_client_id ? cfg.google_client_id : null);
+      })
+      .catch(() => { setPhoneOffered(false); setGoogleId(null); });
   }, [session.api]);
 
   async function run(step: () => Promise<unknown>) {
@@ -73,6 +79,15 @@ export default function SignIn() {
   const submitCode = () => {
     if (!/^[0-9]{6}$/.test(code)) { setProblem('The code is 6 digits.'); return; }
     run(async () => finish(await session.verifyCode(phone.trim(), code)));
+  };
+
+  const submitGoogle = () => {
+    if (!googleId) return;
+    // Backing out of Google's sheet is not an error: the owner is simply still on this screen.
+    run(async () => {
+      const credential = await googleCredential(googleId);
+      if (credential) finish(await session.loginWithGoogle(credential));
+    });
   };
 
   const submitMfa = () => {
@@ -149,6 +164,13 @@ export default function SignIn() {
           )}
           {problem && <Notice>{problem}</Notice>}
         </View>
+
+        {!mfaToken && googleId && (
+          <View style={{ gap: space[3] }}>
+            <Txt tone="subtle" style={{ textAlign: 'center' }}>or</Txt>
+            <Button kind="ghost" onPress={submitGoogle} busy={busy}>Continue with Google</Button>
+          </View>
+        )}
       </Screen>
     </KeyboardAvoidingView>
   );

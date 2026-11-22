@@ -28,9 +28,11 @@ class Settings(BaseSettings):
     # llm
     groq_api_key: str = ""
     google_api_key: str = ""
-    llm_primary: str = "llama-3.3-70b-versatile"
-    llm_fast: str = "llama-3.1-8b-instant"
+    llm_primary: str = "openai/gpt-oss-120b"
+    llm_fast: str = "openai/gpt-oss-20b"
     llm_fallback: str = "gemini-2.5-flash"
+    # Speech to text for the voice assistant (Groq-hosted Whisper).
+    stt_model: str = "whisper-large-v3-turbo"
 
     # infra
     database_url: str = "postgresql+psycopg://autosaarthi:autosaarthi@localhost:5432/autosaarthi"

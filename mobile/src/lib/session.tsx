@@ -23,6 +23,7 @@ interface SessionValue {
   login(email: string, password: string): Promise<SignIn>;
   requestCode(phone: string): Promise<void>;
   verifyCode(phone: string, code: string): Promise<SignIn>;
+  loginWithGoogle(credential: string): Promise<SignIn>;
   verifyMfa(mfaToken: string, code: string): Promise<SignIn>;
   signOut(): Promise<void>;
   retry(): void;
@@ -79,6 +80,7 @@ export function SessionProvider({ children, createApi = defaultFactory }: { chil
     login: (email, password) => api.login(email, password).then(adopt),
     requestCode: (phone) => api.requestCode(phone),
     verifyCode: (phone, code) => api.verifyCode(phone, code).then(adopt),
+    loginWithGoogle: (credential) => api.loginWithGoogle(credential).then(adopt),
     verifyMfa: (token, code) => api.verifyMfa(token, code).then(adopt),
     signOut: async () => { await api.logout(); signedOut(); },
     retry,
