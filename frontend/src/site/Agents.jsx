@@ -1,56 +1,65 @@
 import { useEffect, useRef, useState } from "react";
 import { reducedMotion } from "../fx/gsap.js";
-import { AGENTS } from "./content.js";
+import { AGENTS, HELPERS } from "./content.js";
+import { DetailToggle, useDetail } from "./detail.jsx";
 
 /**
- * Seven agents, one orchestra — and what each is *not* allowed to do, which is
- * the point. The lists are the policy file's own (config/agent_policy.yaml).
+ * Seven AI helpers, one team — and what each one is *not* allowed to do, which
+ * is the point: a mistake or a break-in in one helper cannot spread to the rest.
+ * In plain mode the lists are everyday actions; with technical details on they
+ * are the policy file's own tool names (config/agent_policy.yaml).
  *
- * "Run the orchestra" hands a baton down the chain the way a real run goes:
- * the Master plans, each worker lights up with the tool it calls, and the
- * Master closes the run. Every card is a button too: pressing one pins it.
+ * "Watch a job go through the team" hands the work down the line the way a
+ * real job goes, one helper lighting up at a time.
  */
 
 const RUN = [
-  ["master", "runs.write_plan"],
-  ["data", "telemetry.read_window"],
-  ["diagnosis", "ml.predict_component_failure"],
-  ["engage", "voice.speak"],
-  ["schedule", "scheduler.confirm"],
-  ["feedback", "maintenance.append_record"],
-  ["quality", "defect.cluster"],
-  ["master", "runs.close"],
+  ["lead", "plans the job and hands it out", "runs.write_plan"],
+  ["monitor", "reads the car's sensors and spots the problem", "telemetry.read_window"],
+  ["mechanic", "works out which part and how long it has", "ml.predict_component_failure"],
+  ["caller", "phones the owner and gets a yes", "voice.speak"],
+  ["booking", "books a free slot nearby", "scheduler.confirm"],
+  ["followup", "records the repair afterwards", "maintenance.append_record"],
+  ["factory", "checks whether other cars share the fault", "defect.cluster"],
+  ["lead", "closes the job", "runs.close"],
 ];
-const BEAT_MS = 900;
+const BEAT_MS = 1100;
 
-function AgentCard({ agent, live, pinned, onPin, call }) {
+function AgentCard({ agent, live, tech }) {
+  const helper = HELPERS[agent.id];
   return (
-    <button
-      type="button"
-      className="s-agent"
-      data-tone={agent.tone}
-      data-live={live ? "true" : undefined}
-      aria-pressed={pinned}
-      onClick={onPin}
-    >
-      <span className="s-agent-top">
+    <article className="s-agent" data-tone={helper.tone} data-live={live ? "true" : undefined}>
+      <div className="s-agent-top">
         <i className="s-dot" />
-        <b>{agent.name}</b>
-        {live && <span className="s-agent-call">{call}</span>}
-      </span>
-      <span className="s-agent-role">{agent.role}</span>
-      <span className="s-agent-k">Can call</span>
-      <span className="s-chips">{agent.can.map((t) => <code key={t}>{t}</code>)}</span>
-      <span className="s-agent-k">Denied</span>
-      <span className="s-chips s-chips-no">{agent.cannot.map((t) => <code key={t}>{t}</code>)}</span>
-      {agent.note && <span className="s-agent-note">{agent.note}</span>}
-    </button>
+        <h3>{helper.name}</h3>
+        {tech && <code className="s-agent-id">{helper.tech}</code>}
+      </div>
+      <p className="s-agent-role">{agent.role}</p>
+      {tech ? (
+        <>
+          <p className="s-agent-k">Allowed tools</p>
+          <p className="s-chips">{agent.tech.can.map((t) => <code key={t}>{t}</code>)}</p>
+          <p className="s-agent-k">Denied tools</p>
+          <p className="s-chips s-chips-no">{agent.tech.cannot.map((t) => <code key={t}>{t}</code>)}</p>
+        </>
+      ) : (
+        <div className="s-agent-lists">
+          <ul aria-label={`${helper.name} can`}>
+            {agent.can.map((c) => <li key={c} data-yes="true">{c}</li>)}
+          </ul>
+          <ul aria-label={`${helper.name} cannot`}>
+            {agent.cannot.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+        </div>
+      )}
+      {agent.note && <p className="s-agent-note">{agent.note}</p>}
+    </article>
   );
 }
 
 export default function Agents() {
+  const { on: tech } = useDetail();
   const [beat, setBeat] = useState(-1);
-  const [pinned, setPinned] = useState(null);
   const timer = useRef(0);
   const reduce = reducedMotion();
 
@@ -58,7 +67,7 @@ export default function Agents() {
 
   const play = () => {
     window.clearTimeout(timer.current);
-    if (reduce) { setBeat(RUN.length - 1); return; }
+    if (reduce) { setBeat(RUN.length); return; }
     let i = 0;
     const tick = () => {
       setBeat(i);
@@ -69,41 +78,40 @@ export default function Agents() {
   };
 
   const running = beat >= 0 && beat < RUN.length;
-  const [liveId, liveCall] = running ? RUN[beat] : [null, null];
-  const master = AGENTS[0];
-  const workers = AGENTS.slice(1);
+  const [liveId, liveWhat, liveTool] = running ? RUN[beat] : [null, null, null];
+  const status = running
+    ? tech ? `${HELPERS[liveId].tech} → ${liveTool}` : `${HELPERS[liveId].name} ${liveWhat}.`
+    : beat >= RUN.length ? "Job finished. Every helper stayed inside its own job." : "Press the button to follow one job from start to finish.";
+  const [lead, ...team] = AGENTS;
 
   return (
-    <section id="agents" className="s-section s-agents" aria-labelledby="agents-title">
+    <section id="helpers" className="s-section s-agents" aria-labelledby="agents-title">
       <div className="s-wrap">
         <div className="s-head">
-          <p className="s-eyebrow">Coordinate</p>
-          <h2 id="agents-title" className="s-h2">Seven agents. One orchestra.</h2>
+          <p className="s-eyebrow">The team behind it</p>
+          <h2 id="agents-title" className="s-h2">Seven AI helpers. One team.</h2>
           <p className="s-lead">
-            A Master agent plans; six workers analyse, diagnose, talk, schedule, follow up and report to the plant.
-            Each one holds only the tools its job needs — the rest are refused before they run.
+            Instead of one all-powerful AI, AutoSaarthi uses seven small helpers. Each one does a single job and is
+            only allowed to do that job — so a mistake, or a break-in, in one of them cannot spread to the rest.
           </p>
           <div className="s-head-actions">
             <button type="button" className="s-btn s-btn-ink" onClick={play} disabled={running}>
-              {running ? "Running…" : beat >= RUN.length ? "Run it again" : "Run the orchestra"}
+              {running ? "Following the job…" : beat >= RUN.length ? "Watch it again" : "Watch a job go through the team"}
             </button>
-            <p className="s-agents-status" aria-live="polite">
-              {running
-                ? `${AGENTS.find((a) => a.id === liveId).name} → ${liveCall}`
-                : beat >= RUN.length ? "Run closed · 8 calls · 0 refused" : "Press run to watch the baton move"}
-            </p>
+            <DetailToggle />
           </div>
+          <p className="s-agents-status" aria-live="polite">{status}</p>
         </div>
 
         <div className="s-orchestra">
           <div className="s-orchestra-master">
-            <AgentCard agent={master} live={liveId === "master"} call={liveCall} pinned={pinned === "master"} onPin={() => setPinned(pinned === "master" ? null : "master")} />
+            <AgentCard agent={lead} live={liveId === "lead"} tech={tech} />
           </div>
-          <div className="s-orchestra-bus" aria-hidden="true"><i style={{ width: running ? `${Math.min(100, (beat / (RUN.length - 2)) * 100)}%` : beat >= RUN.length ? "100%" : "0%" }} /></div>
+          <div className="s-orchestra-bus" aria-hidden="true">
+            <i style={{ width: running ? `${Math.min(100, (beat / (RUN.length - 2)) * 100)}%` : beat >= RUN.length ? "100%" : "0%" }} />
+          </div>
           <div className="s-orchestra-workers">
-            {workers.map((a) => (
-              <AgentCard key={a.id} agent={a} live={liveId === a.id} call={liveCall} pinned={pinned === a.id} onPin={() => setPinned(pinned === a.id ? null : a.id)} />
-            ))}
+            {team.map((a) => <AgentCard key={a.id} agent={a} live={liveId === a.id} tech={tech} />)}
           </div>
         </div>
       </div>

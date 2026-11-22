@@ -39,7 +39,7 @@ function HeadUnit() {
         <div className="s-mini-map" aria-hidden="true"><i /><i /><i /></div>
         <div className="s-mini-voice">
           <span className="s-wave s-wave-sm" aria-hidden="true">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ animationDelay: `${(i % 6) * 110}ms` }} />)}</span>
-          <b>Agent speaking</b>
+          <b>Assistant speaking</b>
           <span>Booking waits until the car is parked</span>
         </div>
       </div>
@@ -49,11 +49,11 @@ function HeadUnit() {
 
 // The demo fleet's own predictions, soonest first.
 const ROWS = [
-  ["Thar", "KA03KL1008", "Oil pump", "1.6 d", "P1", "rose"],
-  ["Thar Roxx", "KA05XY1009", "Brake pads", "7.3 d", "P2", "amber"],
-  ["Scorpio Classic", "GJ01EF1005", "Water pump", "9.4 d", "P2", "amber"],
-  ["Bolero", "MH12AB1001", "Water pump", "10.3 d", "P2", "amber"],
-  ["XUV300", "TS09IJ1007", "Battery", "14.5 d", "P2", "amber"],
+  ["Thar", "KA03KL1008", "Oil pump", "2 days", "Urgent", "rose"],
+  ["Thar Roxx", "KA05XY1009", "Brake pads", "7 days", "Soon", "amber"],
+  ["Scorpio Classic", "GJ01EF1005", "Water pump", "9 days", "Soon", "amber"],
+  ["Bolero", "MH12AB1001", "Water pump", "10 days", "Soon", "amber"],
+  ["XUV300", "TS09IJ1007", "Battery", "15 days", "Soon", "amber"],
 ];
 
 function Console() {
@@ -61,11 +61,11 @@ function Console() {
     <div className="s-mini-console">
       <div className="s-mini-console-side" aria-hidden="true"><i /><i /><i /><i /></div>
       <div className="s-mini-console-main">
-        <b className="s-mini-title">Fleet monitoring</b>
+        <b className="s-mini-title">All cars, most urgent first</b>
         <div className="s-mini-kpis">
-          <div><span>In scope</span><b>10</b></div>
+          <div><span>Cars</span><b>10</b></div>
           <div data-tone="rose"><span>Urgent</span><b>1</b></div>
-          <div data-tone="amber"><span>To watch</span><b>7</b></div>
+          <div data-tone="amber"><span>Soon</span><b>7</b></div>
           <div data-tone="green"><span>Healthy</span><b>2</b></div>
         </div>
         <table>
@@ -86,9 +86,9 @@ function Console() {
 }
 
 const CARDS = [
-  { id: "owner", tone: "teal", title: "Owner app", sub: "For drivers. What's wrong, what it costs, one tap to book.", Screen: OwnerPhone },
-  { id: "car", tone: "amber", title: "In-car console", sub: "Speaks while you drive; shows nothing to tap until you park.", Screen: HeadUnit },
-  { id: "console", tone: "blue", title: "Fleet & OEM console", sub: "For service centres and the plant: every car, most urgent first.", Screen: Console },
+  { id: "owner", tone: "teal", title: "Owner app", sub: "For drivers: what's wrong, what it costs, and one tap to book.", Screen: OwnerPhone },
+  { id: "car", tone: "amber", title: "In-car screen", sub: "Talks to you while you drive, and shows nothing to tap until you park.", Screen: HeadUnit },
+  { id: "console", tone: "blue", title: "Service & factory dashboard", sub: "For service centres and car makers: every car, most urgent first.", Screen: Console },
 ];
 
 export default function Screens() {
@@ -116,9 +116,9 @@ export default function Screens() {
     <section id="screens" ref={root} className="s-section s-screens" aria-labelledby="screens-title">
       <div className="s-wrap">
         <div className="s-head s-head-center">
-          <p className="s-eyebrow">One system</p>
+          <p className="s-eyebrow">Where you see it</p>
           <h2 id="screens-title" className="s-h2">Three screens. One story.</h2>
-          <p className="s-lead">The same run, seen by the driver, the car and the people who fix it.</p>
+          <p className="s-lead">The same repair, seen by the driver, by the car itself, and by the people who fix it.</p>
         </div>
         <div className="s-screens-row">
           {CARDS.map(({ id, tone, title, sub, Screen }) => (
