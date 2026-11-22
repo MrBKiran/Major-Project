@@ -7,11 +7,11 @@ What it does, for a vehicle owner:
 
 | Screen | What it shows |
 |---|---|
-| Sign in | email + password, or a code sent by SMS (when the server has it on), then the second factor if the account has one |
+| Sign in | email + password, a code sent by SMS, or Continue with Google (each when the server has it on), then the second factor if the account has one |
 | My car | one sentence: quiet when healthy; what is wearing, how long is left and what each choice costs; the booking |
 | Why this part? | the model's confidence, the reading that shows the wear (engine-running readings only), trouble codes |
 | Book | open slots in the car's city; book, move or cancel — one booking per car, moved in one step |
-| Agent | the same conversation as the web owner app and the console (`/api/chat/*`), resumed where it left off |
+| Assistant | one conversation about every car the owner has, typed or spoken (`/api/assistant/*`); it remembers earlier chats, can only *propose* a booking, and runs it when the owner taps Yes or says yes |
 | History | every service visit |
 | Account | who is signed in, whether notifications reach this phone, sign out (everywhere) |
 

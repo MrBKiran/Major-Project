@@ -24,7 +24,8 @@ export function fakeServer(routes: Record<string, Route>) {
     const call: Call = {
       method: init.method ?? 'GET', path,
       headers: Object.fromEntries(Object.entries(init.headers ?? {})),
-      body: init.body ? JSON.parse(String(init.body)) : undefined,
+      // A JSON body is parsed for the test to read; a multipart upload (FormData) is passed through whole.
+      body: init.body ? (typeof init.body === 'string' ? JSON.parse(init.body) : init.body) : undefined,
     };
     calls.push(call);
     const key = Object.keys(routes).find((k) => {

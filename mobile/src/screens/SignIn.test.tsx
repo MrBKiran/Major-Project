@@ -8,7 +8,12 @@ import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import { reply, renderWithSession, SESSION } from '@/test/harness';
 
+import { googleCredential } from '@/lib/google';
+
 import SignIn from './SignIn';
+
+jest.mock('@/lib/google', () => ({ googleCredential: jest.fn() }));
+const mockGoogle = googleCredential as jest.Mock;
 
 const CONFIG = (methods = ['password', 'phone_otp']) => ({ methods, google_client_id: null, mfa_enforced: false });
 
@@ -119,4 +124,55 @@ it('sends one request however often the button is pressed', async () => {
   release();
   await waitFor(() => expect(status()).toBe('signedIn'));
   expect(server.calls.filter((c) => c.path === '/api/auth/login')).toHaveLength(1);
+});
+
+describe('Continue with Google', () => {
+  const WITH_GOOGLE = { methods: ['password', 'google'], google_client_id: 'web-client.apps.googleusercontent.com', mfa_enforced: false };
+
+  beforeEach(() => mockGoogle.mockReset());
+
+  it('is not offered when the server has Google off', async () => {
+    await open();
+    await waitFor(() => expect(status()).toBe('signedOut'));
+    expect(screen.queryByRole('button', { name: 'Continue with Google' })).toBeNull();
+  });
+
+  it('is not offered without a client id, even if the method is listed', async () => {
+    await open({ 'GET /api/auth/config': () => ({ ...WITH_GOOGLE, google_client_id: null }) });
+    await waitFor(() => expect(status()).toBe('signedOut'));
+    expect(screen.queryByRole('button', { name: 'Continue with Google' })).toBeNull();
+  });
+
+  it('sends the Google token to the server and signs in', async () => {
+    mockGoogle.mockResolvedValue('google-id-token');
+    const { server } = await open({
+      'GET /api/auth/config': () => WITH_GOOGLE,
+      'POST /api/auth/google': () => SESSION(),
+    });
+    await fireEvent.press(await screen.findByRole('button', { name: 'Continue with Google' }));
+    await waitFor(() => expect(status()).toBe('signedIn'));
+    expect(mockGoogle).toHaveBeenCalledWith('web-client.apps.googleusercontent.com');
+    expect(server.calls.find((c) => c.path === '/api/auth/google')!.body).toEqual({ credential: 'google-id-token' });
+  });
+
+  it('stays on the screen, quietly, when the owner backs out of Google', async () => {
+    mockGoogle.mockResolvedValue(null);
+    const { server } = await open({ 'GET /api/auth/config': () => WITH_GOOGLE });
+    await fireEvent.press(await screen.findByRole('button', { name: 'Continue with Google' }));
+    await waitFor(() => expect(mockGoogle).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(server.calls.some((c) => c.path === '/api/auth/google')).toBe(false);
+    expect(status()).toBe('signedOut');
+  });
+
+  it('says so when this Google account is not one the server knows', async () => {
+    mockGoogle.mockResolvedValue('google-id-token');
+    await open({
+      'GET /api/auth/config': () => WITH_GOOGLE,
+      'POST /api/auth/google': () => reply(401, { detail: 'invalid credentials' }),
+    });
+    await fireEvent.press(await screen.findByRole('button', { name: 'Continue with Google' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('invalid credentials');
+    expect(status()).toBe('signedOut');
+  });
 });

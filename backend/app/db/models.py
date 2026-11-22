@@ -621,6 +621,63 @@ class ChatMessage(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
 
 
+class AssistantMessage(Base):
+    """One turn of an owner's conversation with the assistant.
+
+    Unlike `chat_messages` this thread belongs to the PERSON, not to a car and not
+    to one booking pitch: the owner's questions move between their vehicles, and
+    reopening the assistant tomorrow should pick up where it left off.
+    """
+
+    __tablename__ = "assistant_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    principal_id: Mapped[str] = mapped_column(String(32), index=True)
+    role: Mapped[str] = mapped_column(String(12))              # user | assistant
+    text: Mapped[str] = mapped_column(Text)
+    vin: Mapped[str | None] = mapped_column(String(17), default=None)
+    # "text" or "voice" for a user turn; the model it came from for an assistant turn.
+    channel: Mapped[str | None] = mapped_column(String(16), default=None)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
+
+
+class AssistantMemory(Base):
+    """What the assistant remembers of older conversations, one row per owner.
+
+    The last few turns are replayed verbatim; everything older is folded into this
+    short summary, so a long relationship costs a fixed number of prompt tokens.
+    `summarised_to` is the id of the newest message already folded in.
+    """
+
+    __tablename__ = "assistant_memory"
+
+    principal_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    summarised_to: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
+
+
+class AssistantAction(Base):
+    """Something the assistant PROPOSED to do on the owner's behalf.
+
+    The model never books anything. It records a proposal here, the owner is shown
+    exactly what it would do, and only their explicit yes (a tap, or saying yes)
+    runs it through the same service layer the Book screen uses.
+    """
+
+    __tablename__ = "assistant_actions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    principal_id: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16))              # book | reschedule | cancel
+    vin: Mapped[str] = mapped_column(String(17))
+    params: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    summary: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=dt.datetime.utcnow)
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
 class UebaBaseline(Base):
     __tablename__ = "ueba_baselines"
 

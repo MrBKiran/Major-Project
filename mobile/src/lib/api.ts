@@ -98,6 +98,15 @@ export function createClient({ baseUrl, store, fetch: fetchImpl = fetch, onSigne
     }
   }
 
+  async function sendForm(path: string, form: FormData): Promise<Response> {
+    const { 'Content-Type': _json, ...plain } = headers();
+    try {
+      return await fetchImpl(`${baseUrl}${path}`, { method: 'POST', headers: plain, body: form });
+    } catch {
+      throw offline();
+    }
+  }
+
   async function read<T>(res: Response): Promise<T> {
     const body = await res.json().catch(() => null);
     if (!res.ok) {
@@ -165,6 +174,18 @@ export function createClient({ baseUrl, store, fetch: fetchImpl = fetch, onSigne
     return read<T>(res);
   }
 
+  /** A multipart upload, renewed once on an expired token like any other request. */
+  async function upload<T>(path: string, form: FormData): Promise<T> {
+    let res = await sendForm(path, form);
+    if (res.status === 401) {
+      const outcome = await renew();
+      if (outcome === 'ok') res = await sendForm(path, form);
+      else if (outcome === 'offline') throw offline();
+      else if (outcome === 'busy') throw new ApiError(503, 'AutoSaarthi is not answering just now. Try again in a moment.');
+    }
+    return read<T>(res);
+  }
+
   async function signIn(path: string, body: unknown): Promise<SignIn> {
     const res = await send('POST', path, body);
     const data = await read<Session & { mfa_required?: boolean; mfa_token?: string }>(res);
@@ -176,12 +197,15 @@ export function createClient({ baseUrl, store, fetch: fetchImpl = fetch, onSigne
     get: <T = unknown>(path: string) => request<T>('GET', path),
     post: <T = unknown>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
     del: <T = unknown>(path: string) => request<T>('DELETE', path),
+    upload,
 
     principal: () => principal,
 
     login: (email: string, password: string) => signIn('/api/auth/login', { email, password }),
     requestCode: async (phone: string) => { await read(await send('POST', '/api/auth/otp/request', { phone })); },
     verifyCode: (phone: string, code: string) => signIn('/api/auth/otp/verify', { phone, code }),
+    /** `credential` is the ID token Google's sign-in hands the app; the server decides who it is. */
+    loginWithGoogle: (credential: string) => signIn('/api/auth/google', { credential }),
     verifyMfa: (mfaToken: string, code: string) => signIn('/api/auth/mfa/verify', { mfa_token: mfaToken, code }),
 
     /** On launch: resume a stored session. Null when there is none (or it was refused). */

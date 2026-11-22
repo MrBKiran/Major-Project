@@ -1,1 +1,1 @@
-export { default } from '@/screens/Agent';
+export { default } from '@/screens/Assistant';
