@@ -1,4 +1,5 @@
-# A wrong password is refused in words; the right one opens the owner's car.
+# A wrong password is refused in words; the right one opens the owner's car,
+# where the demo fleet's screenplay has the Bolero's water pump wearing out.
 appId: io.autosaarthi.owner
 name: Sign in
 ---
@@ -19,4 +20,5 @@ name: Sign in
 - extendedWaitUntil:
     visible: "Bolero"
     timeout: 30000
-- assertVisible: "Everything reads normal"
+- assertVisible: "Your water pump is wearing out"
+- assertNotVisible: "P2"

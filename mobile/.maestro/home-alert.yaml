@@ -1,6 +1,7 @@
-# An urgent alert reads in owner words, and "Why this part?" shows the evidence.
+# A warning reads in owner words, and "Why this part?" shows the evidence.
+# Aditi's Thar Roxx is the demo's brake-pads case: "Soon", already booked by the agent.
 appId: io.autosaarthi.owner
-name: Home with an urgent alert
+name: Home with a warning
 ---
 - runFlow:
     file: common/sign-in.yaml
@@ -9,12 +10,17 @@ name: Home with an urgent alert
 - extendedWaitUntil:
     visible: "Thar Roxx"
     timeout: 30000
-- assertVisible: "Urgent.*"
-- assertNotVisible: "P1"
-- assertVisible: "Nothing is booked without your yes"
+- assertVisible: "Soon.*"
+- assertVisible: "Your brake pads are wearing out"
+- assertNotVisible: "P2"
+- assertVisible: "Service booked"
+# The button sits under the cost figures, below the first screen.
+- scrollUntilVisible:
+    element: "Why this part?"
+    direction: DOWN
 - tapOn: "Why this part?"
 - extendedWaitUntil:
-    visible: "Why this part"
+    visible: "Why we think so"
     timeout: 15000
 - back
 - assertVisible: "Thar Roxx"
