@@ -79,8 +79,8 @@ These are not conventions; a test fails when they are broken.
 | Owner wording: no staff codes, confidence in words, no trend the readings do not show | `packages/core/src/owner.test.js` |
 | No all-caps label (`uppercase` class or `textTransform`) on the web or the phone | `frontend/src/test/label-voice.test.js`, `mobile/src/test/label-voice.test.ts` |
 | Icons, splash and favicons exist at the sizes asked for, in token colours, at 3:1+ | `mobile/src/test/brand.test.ts`, `frontend/src/test/brand.test.js` |
-| The console's tabs stay one line at 1024 and 1280 px, and every tab is in view | `frontend/e2e/baseline.spec.js` |
-| Every screen matches the reviewed screenshots | `frontend/e2e/baseline.spec.js` |
+| Every console section is reachable, and no label is cut or broken, at 1440, 1280, 1024 and 900 px (sidebar or tab row) | `frontend/e2e/baseline.spec.js` |
+| Every console screen and the owner home match the reviewed screenshots (the rotating 3D car, the heartbeat line and live feeds are masked) | `frontend/e2e/baseline.spec.js` |
 
 ## Night mode
 

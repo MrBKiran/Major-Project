@@ -14,6 +14,11 @@ appId: io.autosaarthi.owner
         text: "Phone"
     commands:
       - tapOn: "Email"
+# The tab switch is not instant: wait for the field itself, or the next tap lands on nothing.
+- extendedWaitUntil:
+    visible:
+      id: "email"
+    timeout: 10000
 - tapOn:
     id: "email"
 - inputText: ${EMAIL}

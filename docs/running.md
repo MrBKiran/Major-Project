@@ -157,6 +157,7 @@ python -m app.db.tenancy_seed
 python -m app.db.history_seed
 python -m app.db.demand_seed
 python scripts/seed_telemetry.py
+python -m alembic stamp head
 cd ..
 ```
 
@@ -169,6 +170,7 @@ What each one does:
 | `app.db.history_seed` | about 500 more cars and their repair history |
 | `app.db.demand_seed` | past workshop demand (used for the forecast) |
 | `seed_telemetry.py` | each demo car's sensor readings |
+| `alembic stamp head` | tells the migration tool the tables are already up to date (the seed scripts built them) |
 
 Each prints a short summary such as `[seed] 10 vehicles, 11 service centres…`. You only do section 3
 once. To put the demo back to its starting state later, see [section 8](#8-day-to-day-cheat-sheet).
@@ -442,7 +444,7 @@ python -m app.auth.manage create-user --email a@b.com --name "A B" --org ORG-RAM
 | Sign-in says wrong email or password | The demo accounts are missing | Run `python -m app.db.tenancy_seed` (section 3.6). The password is `autosaarthi` |
 | `Port 5173 is already in use` | The web app is already running somewhere | Close the other window, or find it: `Get-NetTCPConnection -LocalPort 5173 -State Listen` then `Stop-Process -Id <number>` |
 | A blank page and `useAuth() must be used inside <AuthProvider>` in the console | A live-reload hiccup while editing | Reload the page |
-| `alembic upgrade head` says `relation ... already exists` | The tables were created by the seed scripts, so the migration history is behind | Not a problem for running the demo. If you need the history aligned, run `alembic stamp head` in `backend` |
+| `alembic upgrade head` says `relation ... already exists` | The tables were created by the seed scripts, so the migration history is behind | Run `python -m alembic stamp head` in `backend` once; it records that the tables are already current. (New databases should do this at the end of section 3.6.) |
 | The phone app stays on the splash screen | The phone app's server is stuck | Stop it, then `npx expo start --port 8081 --clear` |
 | Phone cannot reach the backend | Wrong address for where it runs | Emulator: nothing to set. USB: `adb reverse` lines in step C. Wi-Fi: `EXPO_PUBLIC_API_URL` and `--host 0.0.0.0` in step D |
 | The build fails with a very long file path | Old CMake | Install CMake 3.31 or newer from Android Studio's SDK Manager, then `npx expo prebuild --platform android` again |
