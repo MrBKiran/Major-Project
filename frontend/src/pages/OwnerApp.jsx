@@ -288,7 +288,7 @@ function Heartbeat() {
     return () => tween.kill();
   }, []);
   return (
-    <svg aria-hidden="true" viewBox="0 0 240 36" width="100%" height="36" preserveAspectRatio="none" style={{ display: "block" }}>
+    <svg aria-hidden="true" data-testid="heartbeat" viewBox="0 0 240 36" width="100%" height="36" preserveAspectRatio="none" style={{ display: "block" }}>
       <path d="M0 18 H70 L78 18 L84 4 L92 32 L100 18 H150 L156 18 L162 10 L168 26 L174 18 H240"
             fill="none" stroke={color.ok} strokeOpacity="0.28" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <path ref={path} d="M0 18 H70 L78 18 L84 4 L92 32 L100 18 H150 L156 18 L162 10 L168 26 L174 18 H240"
