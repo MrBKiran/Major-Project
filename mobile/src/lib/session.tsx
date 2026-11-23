@@ -10,9 +10,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { ApiError, createClient, type ApiClient, type Principal, type SignIn } from './api';
-import { API_URL } from './config';
-import { tokenStore } from './store';
+import { ApiError, type ApiClient, type Principal, type SignIn } from './api';
+import { onSharedSignedOut, sharedApi } from './shared';
 
 export type Status = 'restoring' | 'signedIn' | 'signedOut' | 'unreachable';
 
@@ -33,8 +32,12 @@ const SessionContext = createContext<SessionValue | null>(null);
 
 export type ClientFactory = (onSignedOut: () => void) => ApiClient;
 
-const defaultFactory: ClientFactory = (onSignedOut) =>
-  createClient({ baseUrl: API_URL, store: tokenStore, onSignedOut });
+// The phone and the car's screen share one client (./shared.ts): two would each renew the same
+// rotating refresh token, which the server reads as a replay.
+const defaultFactory: ClientFactory = (onSignedOut) => {
+  onSharedSignedOut(onSignedOut);
+  return sharedApi();
+};
 
 export function SessionProvider({ children, createApi = defaultFactory }: { children: ReactNode; createApi?: ClientFactory }) {
   const [status, setStatus] = useState<Status>('restoring');

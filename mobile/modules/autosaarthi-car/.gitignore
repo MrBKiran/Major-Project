@@ -1,0 +1,4 @@
+# Gradle output for this module: generated, large, and different on every machine.
+android/build/
+android/.gradle/
+android/.cxx/

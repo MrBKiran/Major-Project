@@ -1,8 +1,7 @@
 # AutoSaarthi
 
-**Techathon 6.0 · Challenge III (Automotive — Hero + M&M)**
-Autonomous Predictive Maintenance & Proactive Service Scheduling with a
-Manufacturing Feedback Loop.
+Autonomous predictive maintenance and proactive service scheduling for vehicles, with a
+manufacturing feedback loop.
 
 A Master Agent orchestrates six Worker Agents over a live vehicle telemetry
 stream: it predicts component failures, calls the owner with a persuasive
@@ -10,7 +9,7 @@ voice agent, books the service slot, follows up for feedback, and feeds
 RCA/CAPA insights back to the plant — with every agent action policed by a
 UEBA security layer.
 
-> Full build plan, architecture rationale and 3-week schedule: [`../PROJECT_PLAN.md`](../PROJECT_PLAN.md)
+> New here? Start with [`docs/running.md`](docs/running.md).
 
 ---
 
@@ -53,8 +52,10 @@ UEBA security layer.
 | OpenAPI docs | ✅ app description, every endpoint tagged (`ueba`/`redteam`/`tools` were missing) — `/docs` is now a complete, navigable surface |
 | REST API for Slides 1–4 | ✅ `backend/app/api_fleet.py` — fleet, vehicle detail, forecast, clusters, CAPA draft, run trigger. Every route permission-guarded and scope-filtered |
 | Deterministic demo reset | ✅ `backend/scripts/reset_demo.py` — restores the exact state the slide numbers were computed from |
-| Voice pipeline | ⬜ use the **browser** Web Speech API + `speechSynthesis` (PROJECT_PLAN §7), not piper-tts — no install, no Windows blocker |
-| Frontend | ⬜ scope to **five screenshot-grade screens**, one per slide — the deliverable is a 5-slide PPT, not a product |
+| Owner assistant with voice | ✅ one conversation about every car an owner has, typed or spoken (server-side Groq Whisper speech-to-text); remembers earlier chats; can only *propose* a booking, which runs when the owner confirms — `backend/app/assistant/`, phone and web |
+| Web app | ✅ public site, sign-in, staff console, head-unit preview and the owner app at `/app` — one design system (`docs/design-system.md`) |
+| Phone app | ✅ Expo (Android first): sign in (email, phone code, Google), my car, why this part, book, assistant, history, account — `mobile/`. The car's screen (Android Auto) is built and tested up to the car host — [`docs/android-auto.md`](docs/android-auto.md). Still open: running it on Android Auto / the Desktop Head Unit, push on a real device, an emulator run |
+| Run guide | ✅ [`docs/running.md`](docs/running.md) |
 
 ---
 
