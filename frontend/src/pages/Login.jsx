@@ -125,7 +125,7 @@ export default function Login({ defaultMethod = "password", surface = "console" 
       {showHero && <Hero />}
 
       <div className="relative flex flex-1 items-center justify-center px-4 py-10">
-        <div aria-hidden className="aurora"><i /><i /><i /></div>
+        <div aria-hidden className="aurora aurora-rich"><i /><i /><i /><i /><i /></div>
         {/* Signed out, the theme can still be chosen. */}
         <div className="absolute right-4 top-4 z-[1]"><ThemeToggle compact /></div>
         {/* The console's sign-in is reached from the public site; the owner's phone app has no site to go back to. */}
@@ -270,10 +270,12 @@ export default function Login({ defaultMethod = "password", surface = "console" 
         </Tilt>
         </div>
 
-        <p className="mt-5 text-center text-caption text-fg-subtle">
-          Local demo — every seeded account uses password{" "}
-          <code className="rounded bg-surface-card px-1 py-0.5 font-mono text-fg-tertiary">autosaarthi</code>
-        </p>
+        {import.meta.env.DEV && (
+          <p className="mt-5 text-center text-caption text-fg-subtle">
+            Development build — every seeded account uses password{" "}
+            <code className="rounded bg-surface-card px-1 py-0.5 font-mono text-fg-tertiary">autosaarthi</code>
+          </p>
+        )}
       </div>
       </div>
     </div>
@@ -284,15 +286,18 @@ export default function Login({ defaultMethod = "password", surface = "console" 
 // screen, before any data is loaded, so nothing here is a live reading.
 const TICKER = [
   ["danger", "Water pump wear 82%"],
-  ["warn", "Battery voltage sag · 11.8 V"],
+  ["gold", "Battery voltage sag · 11.8 V"],
   ["good", "Service slot held · Pune"],
-  ["info", "Owner call completed"],
+  ["teal", "Owner call completed"],
   ["danger", "Brake pads 14% left"],
-  ["good", "CAPA 2022-1096 matched"],
-  ["warn", "Oil pressure dipping"],
-  ["info", "Prompt injection blocked"],
+  ["info", "CAPA 2022-1096 matched"],
+  ["gold", "Oil pressure dipping"],
+  ["violet", "Prompt injection blocked"],
 ];
-const TICKER_DOT = { danger: "bg-p1", warn: "bg-p2", good: "bg-ok", info: "bg-p3" };
+const TICKER_DOT = {
+  danger: "bg-p1", warn: "bg-p2", good: "bg-ok", info: "bg-p3",
+  teal: "bg-[var(--scene-teal)]", violet: "bg-[var(--scene-violet)]", gold: "bg-[var(--scene-gold)]",
+};
 
 /** The sign-in welcome for staff: the brand's road, coming at you. Decorative
  *  apart from the headline and the sentence under it. */
@@ -305,7 +310,7 @@ function Hero() {
       className="relative hidden overflow-hidden border-r border-border bg-surface-panel lg:flex lg:flex-col"
     >
       <DotGrid className="absolute inset-0 h-full w-full opacity-70" />
-      <div aria-hidden className="aurora"><i /><i /><i /></div>
+      <div aria-hidden className="aurora aurora-rich"><i /><i /><i /><i /><i /></div>
       {/* The whole hero is the 3D world; the headline sits in its sky. Where WebGL is
           missing it falls back to the SVG road along the bottom edge. */}
       <Scene key={night ? "night" : "day"} className="absolute inset-0" fallbackClassName="absolute inset-x-0 bottom-0 h-[66%]" />
@@ -318,7 +323,7 @@ function Hero() {
         <BlurText
           as="p"
           className="splash mt-3 block max-w-[15ch] text-fg-strong"
-          parts={["Fix it before it", { text: "breaks.", className: "text-accent-ink" }]}
+          parts={["Fix it before it", { text: "breaks.", className: "splash-shift" }]}
         />
         <p className="mt-5 max-w-md text-lead text-fg-secondary">
           A Master Agent watches every vehicle&apos;s telemetry, calls the owner, books the slot
@@ -329,6 +334,8 @@ function Hero() {
       <SignalChip tone="danger" label="Water pump · wear 82%" value="Fails in ~9 days" className="left-[7%] top-[47%]" />
       <SignalChip tone="good" label="Slot booked · Pune" value="Tue 10:30" delay={0.4} className="right-[9%] top-[41%]" />
       <SignalChip tone="info" label="Plant feedback" value="CAPA draft ready" delay={0.8} className="right-[17%] top-[61%]" />
+      <SignalChip tone="violet" label="Security guard" value="Injection blocked" delay={1.2} className="left-[14%] top-[66%]" />
+      <SignalChip tone="teal" label="Owner call" value="Said yes · 38 s" delay={1.6} className="left-[40%] top-[53%]" />
 
       <div className="relative z-[1] mt-auto pb-7">
         <Marquee>

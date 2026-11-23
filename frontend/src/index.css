@@ -182,6 +182,45 @@ p {
 }
 @keyframes aurora-drift { to { transform: translate3d(70px, 46px, 0) scale(1.18); } }
 
+/* The sign-in hero's wider palette: the brand orange plus the hues the public site tells its story in
+   (teal, violet, blue, gold, green), so the scene is a place with colour in it and not one orange line. */
+:root {
+  --scene-teal: #14b8a6;
+  --scene-violet: #8b5cf6;
+  --scene-blue: #3b82f6;
+  --scene-gold: #f5b83d;
+  --scene-green: #34c77b;
+  --scene-rose: #f0546a;
+  --scene-paint-blue: #2f5d9c;
+  --scene-paint-red: #7a2a3a;
+  --scene-paint-green: #3f6b57;
+  --scene-paint-silver: #6d6f78;
+  --scene-warm: #ffe2a8;
+}
+/* A richer aurora: five slow blobs, each its own hue, drifting at different speeds. */
+.aurora-rich > i { opacity: 0.6; }
+.aurora-rich > i:nth-child(1) { background: radial-gradient(closest-side, color-mix(in srgb, var(--color-accent) 40%, transparent), transparent); }
+.aurora-rich > i:nth-child(2) { background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-violet) 34%, transparent), transparent); animation-duration: 26s; }
+.aurora-rich > i:nth-child(3) { background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-teal) 30%, transparent), transparent); animation-duration: 23s; }
+.aurora-rich > i:nth-child(4) {
+  width: 380px; height: 380px; right: 10%; bottom: 6%; animation-delay: -4s; animation-duration: 29s;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-blue) 30%, transparent), transparent);
+}
+.aurora-rich > i:nth-child(5) {
+  width: 340px; height: 340px; left: 6%; top: 40%; animation-delay: -10s; animation-duration: 31s;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-gold) 26%, transparent), transparent);
+}
+
+/* "breaks." shimmers through the warm end of the palette instead of sitting in one flat orange. */
+@keyframes hue-slide { to { background-position: -300% 0; } }
+.splash-shift {
+  background: linear-gradient(90deg, var(--color-accent-ink), var(--color-p1), var(--scene-gold), var(--scene-rose), var(--color-accent-ink));
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  animation: hue-slide 7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .splash-shift { animation: none; } }
+
 /* The road scene (fx/RoadScene.jsx). Each dash is drawn at its closest, then
    scaled from the vanishing point at (400, 236): that scaling is the perspective. */
 .road-dash {
@@ -288,6 +327,24 @@ p {
 @keyframes lane-run { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
 .brand-mark:hover .brand-dash { animation: lane-run 700ms ease-in-out infinite; }
 .brand-mark:hover .brand-dash:nth-of-type(2) { animation-delay: 140ms; }
+/* The "what if I wait?" slider: the track is drawn by the component (safe, then too late), so the
+   browser's own track is made invisible and only the thumb is drawn here. */
+.wait-range { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+.wait-range::-webkit-slider-runnable-track { height: 24px; background: transparent; }
+.wait-range::-moz-range-track { height: 24px; background: transparent; }
+.wait-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%;
+  background: var(--color-accent); border: 0;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.92), 0 2px 8px rgb(0 0 0 / 0.4);
+}
+.wait-range::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--color-accent); border: 0;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.92), 0 2px 8px rgb(0 0 0 / 0.4);
+}
+.wait-range:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; border-radius: 99px; }
+/* The mark as a loader: the road's dashes run while the car's data is on its way. */
+.brand-mark.is-loading .brand-dash { animation: lane-run 700ms ease-in-out infinite; }
+.brand-mark.is-loading .brand-dash:nth-of-type(2) { animation-delay: 140ms; }
 
 /* ── Depth ────────────────────────────────────────────────────────────────
    Surfaces sit above the page on layered shadows (a hairline highlight on the
@@ -359,6 +416,7 @@ button.bg-accent-deep:active:not(:disabled) {
   .road-scan, .road-car, .road-tail { animation: none !important; }
   .tilt:hover, .tilt-soft:hover, button.bg-accent-deep:hover, button.bg-accent-deep:active { transform: none !important; }
   .brand-mark:hover { animation: none !important; }
+  .brand-mark.is-loading .brand-dash { animation: none !important; }
   /* No stream of dashes: hold them at fixed distances so the road still reads. */
   .road-dash { animation: none !important; transform: scale(var(--s, 1)) !important; opacity: 1 !important; }
   .shiny { background: none; color: var(--color-fg-muted); }

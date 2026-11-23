@@ -30,6 +30,9 @@ The browser preview has no secure storage, so it keeps the session in memory: a 
 
 ## Run it
 
+A beginner-level walkthrough, from install to a running app, is in [`docs/running.md`](../docs/running.md);
+what follows is the reference.
+
 The backend must be running (`:8010`).
 
 ```bash

@@ -329,3 +329,22 @@ export const ATTACKS = [
     tech: { name: "Screen while driving", attempt: "console.show_slots @ 68 km/h", verdict: "drive-state rule G6 · deferred" },
   },
 ];
+
+/**
+ * What waiting costs, part by part: the repair-versus-breakdown pairs the product itself quotes for
+ * its demo fleet (simulator/vehicles.yaml: repair.cost_inr, repair.bay_minutes, breakdown_cost_inr,
+ * horizon_days). `warning` is how many days of notice the readings give before the part fails.
+ * Real prices vary by car and city, and the page says so beside the calculator.
+ */
+export const COSTS = [
+  { id: "water_pump", label: "Water pump", repair: 2400, breakdown: 18500, minutes: 90, warning: 26, tone: "teal",
+    breaks: "The engine overheats. Towing, and possibly a head gasket." },
+  { id: "brake_pads", label: "Brake pads", repair: 3100, breakdown: 22000, minutes: 60, warning: 14, tone: "rose", critical: true,
+    breaks: "The brakes wear past safe. A safety risk as well as a bill." },
+  { id: "battery", label: "Battery", repair: 5200, breakdown: 9000, minutes: 30, warning: 21, tone: "amber",
+    breaks: "The car will not start, wherever it is." },
+  { id: "fuel_injector", label: "Fuel injector", repair: 4600, breakdown: 14000, minutes: 120, warning: 26, tone: "blue",
+    breaks: "The engine runs lean and starts to misfire." },
+  { id: "oil_pump", label: "Oil pump", repair: 7800, breakdown: 65000, minutes: 180, warning: 6, tone: "violet", critical: true,
+    breaks: "The engine runs without oil and seizes." },
+];

@@ -60,6 +60,10 @@ UEBA security layer.
 
 ## Quickstart
 
+> **New here?** [`docs/running.md`](docs/running.md) is the step-by-step guide to running the web app and
+> the phone app from a fresh checkout, with every sign-in account and a troubleshooting table.
+> The short version is below.
+
 ```bash
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -68,8 +72,11 @@ cp .env.example .env                                  # add GROQ_API_KEY
 docker compose up -d                                  # postgres+timescale, mosquitto
 
 cd backend
-uvicorn app.main:app --reload --port 8000
-# → http://localhost:8000/docs
+uvicorn app.main:app --reload --port 8010
+# → http://localhost:8010/docs
+
+# in another terminal: the web app (proxies /api to :8010)
+cd frontend && npx vite --port 5173      # → http://localhost:5173
 ```
 
 ### Two policy layers, both enforced

@@ -10,6 +10,7 @@ the head unit, and (from Phase 4) the React Native app and its Android Auto scre
 | Formatting | [`packages/core`](../packages/core/src/format.js) — dates, ₹, plurals, labels; one house style everywhere |
 | Fonts | Space Grotesk + JetBrains Mono, **bundled** (`@fontsource/*`), not fetched from Google Fonts |
 | Guards | `packages/tokens/src/tokens.test.js` (87 tests) + the screenshot baseline (`frontend/e2e/`) |
+| Research | [`docs/design-research.md`](design-research.md): the reference sites studied, what was taken and what was refused, and the rule that scroll-driven motion belongs on the landing page only |
 
 ## Rules
 
