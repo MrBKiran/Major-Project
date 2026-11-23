@@ -34,6 +34,7 @@ import {
   PrimaryButton, SANS, Spark, tokens,
 } from "../device.jsx";
 import { gsap, reducedMotion } from "../fx";
+import { micAvailable, speak, speechAvailable, stopSpeaking, useRecorder } from "../voice.js";
 import { HealthRing, OwnerStage } from "./owner/Stage.jsx";
 
 /** Readings taken with the ignition off are not evidence of wear — the backend's
@@ -76,6 +77,13 @@ export default function OwnerApp({ standalone = false }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
   const [screen, setScreen] = useState("home");
+  // A first message for the assistant to send on arrival. On the web the assistant is the only way
+  // to book, so "Book a service" opens it already asking for one.
+  const [ask, setAsk] = useState(null);
+  const go = useCallback((to) => {
+    setAsk(to === "book" ? "Book me a service" : null);
+    setScreen(to === "book" ? "agent" : to);
+  }, []);
   const [booking, setBooking] = useState(null);
   const [service, setService] = useState(null);
 
@@ -126,19 +134,20 @@ export default function OwnerApp({ standalone = false }) {
     <LoadingPane />
   ) : screen === "home" ? (
     standalone ? (
-      <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen} ring />
+      <Home detail={detail} top={top} economics={economics} booking={shownBooking} go={go} ring />
     ) : (
       <HomeWeb
-        detail={detail} top={top} economics={economics} booking={shownBooking} go={setScreen}
+        detail={detail} top={top} economics={economics} booking={shownBooking} go={go}
         onOpenWhy={() => top && setScreen("why")}
       />
     )
   ) : screen === "why" ? (
-    <WhyThisPart detail={detail} top={top} economics={economics} back={() => setScreen("home")} go={setScreen} />
+    <WhyThisPart detail={detail} top={top} economics={economics} back={() => setScreen("home")} go={go} />
   ) : screen === "agent" ? (
-    <AgentScreen
-      vin={vin} back={() => setScreen("home")}
-      onBooked={(b) => { setBooking(b); setScreen("booked"); load(vin); }}
+    <AssistantScreen
+      vin={vin} ask={ask} back={() => setScreen("home")}
+      onBooked={(b) => { setBooking(b); setScreen("booked"); }}
+      onChanged={() => load(vin)}
     />
   ) : screen === "booked" ? (
     <Booked detail={detail} top={top} economics={economics} booking={shownBooking} back={() => setScreen("home")} />
@@ -220,7 +229,7 @@ export default function OwnerApp({ standalone = false }) {
 /* ── chrome ──────────────────────────────────────────────────────────────── */
 
 /** What each detail view is called in the breadcrumb. */
-const CRUMBS = { why: "Evidence", agent: "Agent chat", booked: "Receipt", history: "All visits" };
+const CRUMBS = { why: "Evidence", agent: "Assistant", booked: "Receipt", history: "All visits" };
 
 /** A screen's entrance: it swings in on its hinge, in perspective. GSAP removes
  *  its inline transform when it lands, so nothing stays rotated or becomes a
@@ -343,11 +352,24 @@ function Home({ detail, top, economics, booking, go, ring = false }) {
         <HealthyCard detail={detail} />
       )}
 
+      {(booking?.booked || !top) && <AskLink go={go} />}
+
       {/* Timeline rail — the deck's spine. The now-card above is the newest
           node; everything below is what already happened. No tabs. */}
       <div style={{ marginTop: 26 }}>
         <Timeline history={history} go={go} heading />
       </div>
+    </div>
+  );
+}
+
+/** A quiet way into the assistant when no warning is showing (the warning card has its own buttons).
+ *  The assistant answers anything about the owner's cars, so a healthy screen should not be a dead end. */
+function AskLink({ go }) {
+  const night = useNight();
+  return (
+    <div style={{ marginTop: 12 }}>
+      <GhostButton night={night} onClick={() => go("agent")}>Ask the assistant</GhostButton>
     </div>
   );
 }
@@ -491,6 +513,7 @@ function HomeWeb({ detail, top, economics, booking, go, onOpenWhy }) {
             ) : (
               <HealthyCard detail={detail} signals={false} />
             )}
+            {(booked || !top) && <AskLink go={go} />}
           </div>
         </WebPanel>
       </div>
@@ -611,7 +634,7 @@ export function NowCard({ top, economics = null, go, ring = false }) {
         <GhostButton night={night} grow onClick={() => go("agent")}>{OWNER.talkToAgent}</GhostButton>
       </div>
       <div style={{ marginTop: 10 }}>
-        <PrimaryButton night={night} onClick={() => go("agent")} note={OWNER.nothingBooked}>
+        <PrimaryButton night={night} onClick={() => go("book")} note={OWNER.nothingBooked}>
           {OWNER.book}
         </PrimaryButton>
       </div>
@@ -755,155 +778,300 @@ function WhyThisPart({ detail, top, economics, back, go }) {
         )}
 
         <div style={{ marginTop: 18 }}>
-          <PrimaryButton night={night} onClick={() => go("agent")}>Show me slots</PrimaryButton>
+          <PrimaryButton night={night} onClick={() => go("book")}>Show me slots</PrimaryButton>
         </div>
       </div>
     </>
   );
 }
 
-/* ── P07 / P09 / P11 — the agent ─────────────────────────────────────────── */
+/* ── P07 / P09 / P11 — the assistant ─────────────────────────────────────── */
 
-/** The live conversation, and the only path to a booking. Same endpoints the
- *  console's chat uses, so the transcript persists and the agent remembers. */
-function AgentScreen({ vin, back, onBooked }) {
+const SUGGESTIONS = [
+  "How is my car doing?",
+  "What will it cost if I wait?",
+  "Book me a service",
+  "What does my warning mean?",
+];
+
+let localCount = 0;
+const localId = () => `local-${++localCount}`;
+
+/** One conversation about every car the owner has, typed or spoken, and the only way to book on the
+ *  web. The server (/api/assistant/*) keeps the thread and a longer memory, so it resumes where it
+ *  left off. The assistant cannot book anything itself: it PROPOSES, and the owner's click on
+ *  "Yes, do it" (or saying yes) is what runs it. `ask` is a first message to send on arrival, so
+ *  "Book a service" lands in a conversation that is already asking for one. */
+function AssistantScreen({ vin, ask, back, onBooked, onChanged }) {
   const night = useNight();
   const t = tokens(night);
-  const [messages, setMessages] = useState([]);
-  const [session, setSession] = useState(null);
+  const [turns, setTurns] = useState([]);
+  const [pending, setPending] = useState(null);
+  const [receipt, setReceipt] = useState(null);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(true);
-  const [done, setDone] = useState(false);
-  const [note, setNote] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [readAloud, setReadAloud] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const bottomRef = useRef(null);
+  const alive = useRef(true);
+  const asked = useRef(false);
+  const clipHandler = useRef(() => {});
+  // At the length limit the recorder cuts itself off; what was said so far is still sent.
+  const recorder = useRecorder((clip) => clipHandler.current(clip));
+
+  // Set true on mount as well as false on leaving: React's development double-mount runs the cleanup
+  // once, and the flag must not stay false after it or speech could never finish.
+  useEffect(() => { alive.current = true; return () => { alive.current = false; stopSpeaking(); }; }, []);
 
   useEffect(() => {
-    api.post("/api/chat/start", { vin })
+    api.get("/api/assistant/thread")
       .then((res) => {
-        if (res.note) { setNote(res.note); setDone(true); return; }
-        setMessages(res.turns || []);
-        setSession({
-          run_id: res.run_id, plan: res.plan,
-          offered_slots: res.offered_slots, objections_handled: res.objections_handled,
-        });
-        if (res.booking?.booked) onBooked(res.booking);
+        setTurns((res.turns || []).map((m) => ({ id: `t-${m.id}`, role: m.role === "user" ? "user" : "assistant", text: m.text })));
+        setPending(res.pending_action || null);
       })
-      .catch((e) => setNote(e.message || String(e)))
-      .finally(() => setBusy(false));
-  }, [vin]);          // eslint-disable-line react-hooks/exhaustive-deps
+      .catch((e) => setProblem(e.message || String(e)))
+      .finally(() => {
+        setLoading(false);
+        if (ask && !asked.current) { asked.current = true; send(ask); }
+      });
+  }, []);          // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [turns, busy, pending]);
 
-  async function send(text) {
-    const body = (text ?? input).trim();
-    if (!body || busy || done || !session) return;
+  function say(text) {
+    setSpeaking(true);
+    speak(text, () => { if (alive.current) setSpeaking(false); });
+  }
+
+  /** A booking was made or moved: the owner can open its receipt, and Home must read it afresh. */
+  function took(done) {
+    if ((done.kind === "book" || done.kind === "reschedule") && done.booking) {
+      setReceipt({ ...done.booking, booked: true });
+    }
+    onChanged();
+  }
+
+  async function send(text, channel = "text") {
+    const message = (text || "").trim();
+    if (!message || busy) return;
+    stopSpeaking();
+    setSpeaking(false);
     setInput("");
-    setMessages((m) => [...m, { role: "user", text: body }]);
+    setProblem(null);
+    setTurns((m) => [...m, { id: localId(), role: "user", text: message }]);
     setBusy(true);
     try {
-      const res = await api.post("/api/chat/reply", {
-        vin, run_id: session.run_id, plan: session.plan, message: body,
-        offered_slots: session.offered_slots, objections_handled: session.objections_handled,
-      });
-      setMessages((m) => {
-        const next = [...m];
-        for (let i = next.length - 1; i >= 0; i--) {
-          if (next[i].role === "user") { next[i] = { ...next[i], intent: res.intent }; break; }
-        }
-        return [...next, ...(res.turns || [])];
-      });
-      setSession({
-        run_id: res.run_id, plan: res.plan,
-        offered_slots: res.offered_slots, objections_handled: res.objections_handled,
-      });
-      if (res.booking?.booked) { onBooked(res.booking); return; }
-      if (res.done) setDone(true);
+      const res = await api.post("/api/assistant/message", { message, channel, vin });
+      setTurns((m) => [...m, { id: localId(), role: "assistant", text: res.reply }]);
+      setPending(res.pending_action || null);
+      if (res.done?.ok) took(res.done);
+      if (channel === "voice" || readAloud) say(res.reply);
     } catch (e) {
-      setMessages((m) => [...m, { role: "system", text: e.message || String(e) }]);
+      setProblem(e.message || String(e));
     } finally {
       setBusy(false);
     }
   }
 
-  const slot = session?.offered_slots?.[0];
+  async function decide(kind) {
+    if (!pending || busy) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const res = await api.post(`/api/assistant/actions/${pending.id}/${kind}`);
+      // Mirrors what the server records: the owner's yes or no only when it took effect, never a
+      // "Yes" for something that had expired or already happened.
+      const said = kind === "confirm" ? "Yes, go ahead." : "No, leave it.";
+      setTurns((m) => [...m, ...(res.ok ? [{ id: localId(), role: "user", text: said }] : []),
+        { id: localId(), role: "assistant", text: res.message }]);
+      setPending(null);
+      if (res.ok && kind === "confirm") took(res);
+      if (readAloud) say(res.message);
+    } catch (e) {
+      setProblem(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleMic() {
+    if (busy) return;
+    setProblem(null);
+    if (!recorder.recording) {
+      stopSpeaking();
+      setSpeaking(false);
+      const result = await recorder.start();
+      if (result === "denied") setProblem("Allow the microphone to talk to the assistant, or type your question instead.");
+      else if (result === "unsupported") setProblem("This browser cannot record. Type your question instead.");
+      else if (result === "error") setProblem("The microphone could not start. Type your question instead.");
+      return;
+    }
+    await sendClip(await recorder.stop());
+  }
+
+  /** Transcribe a finished clip and ask what it says: for a click on stop, and for the cut-off at the length limit. */
+  async function sendClip(clip) {
+    setBusy(true);
+    let heard = null;
+    try {
+      if (clip) {
+        const form = new FormData();
+        form.append("audio", clip.blob, clip.name);
+        const { text } = await api.upload("/api/assistant/transcribe", form);
+        if ((text || "").trim()) heard = text;
+        else setProblem("I did not catch that. Try again, a little closer to the microphone.");
+      }
+    } catch (e) {
+      setProblem(e.message || "I could not hear that. Type your question instead.");
+    } finally {
+      setBusy(false);
+    }
+    if (heard) await send(heard, "voice");
+  }
+
+  // Kept current each render, so the recorder's cut-off always reaches this render's sendClip.
+  useEffect(() => { clipHandler.current = (clip) => { void sendClip(clip); }; });
+
+  async function startOver() {
+    stopSpeaking();
+    setSpeaking(false);
+    try {
+      await api.del("/api/assistant/thread");
+      setTurns([]);
+      setPending(null);
+      setReceipt(null);
+      setProblem(null);
+    } catch (e) {
+      setProblem(e.message || String(e));
+    }
+  }
+
+  const empty = !loading && turns.length === 0;
+  const canSend = !busy && !recorder.recording && input.trim().length > 0;
+  const mic = micAvailable();
+  const small = {
+    border: "none", background: "transparent", cursor: "pointer", fontFamily: SANS, fontSize: 12,
+    color: t.dim, padding: "8px 6px", minHeight: 36,
+  };
 
   return (
     <>
       <ScreenHeader
-        title="AutoSaarthi agent" back={back}
-        right={<Meta night={night}>{busy ? "Thinking" : "Live"}</Meta>}
+        title="Assistant" back={back}
+        right={<Meta night={night}>{busy ? "Thinking" : recorder.recording ? "Listening" : "Live"}</Meta>}
       />
 
-      <div style={{ padding: "16px 16px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
-        {note && (
-          <p style={{ fontFamily: SANS, fontSize: 14, color: t.dim, textAlign: "center", padding: "20px 8px" }}>
-            {note}
-          </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px 0" }}>
+        {speechAvailable() && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, fontFamily: SANS, fontSize: 12, color: t.dim, cursor: "pointer" }}>
+            <input
+              type="checkbox" checked={readAloud}
+              onChange={(e) => { setReadAloud(e.target.checked); if (!e.target.checked) { stopSpeaking(); setSpeaking(false); } }}
+            />
+            Read replies aloud
+          </label>
         )}
-        {messages.map((m, i) => (
-          <Bubble key={i} m={m} />
-        ))}
-        {busy && <TypingDots />}
-        <div ref={bottomRef} />
+        <span style={{ flex: 1 }} />
+        {speaking && <button type="button" style={small} onClick={() => { stopSpeaking(); setSpeaking(false); }}>Stop</button>}
+        {turns.length > 0 && <button type="button" style={small} onClick={startOver}>Start over</button>}
       </div>
 
-      {/* Slot shortcut. Shown, never held — a hold is an irreversible tool call
-          and needs the Master's declared plan first, which only an explicit
-          yes produces. */}
-      {slot && !done && (
-        <div style={{ padding: "4px 16px 0" }}>
-          <Meta night={night}>Soonest slot</Meta>
-          <div style={{
-            marginTop: 6, border: `1px solid ${t.edge}`, borderRadius: 12,
-            padding: "12px 14px", background: t.card, display: "flex",
-            justifyContent: "space-between", alignItems: "center", gap: 10,
-          }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 600, color: t.ink }}>
-                {formatSlot(slot.slot_start)}
-              </div>
-              <Meta night={night}>
-                {slot.center_name || slot.center_id}
-              </Meta>
+      <div style={{ padding: "12px 16px 8px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {empty && (
+          <div style={{ display: "grid", gap: 10, padding: "12px 0" }}>
+            <h2 style={{ margin: 0, fontFamily: SANS, fontSize: 17, fontWeight: 600, color: t.ink }}>Ask me about your cars</h2>
+            <p style={{ margin: 0, fontFamily: SANS, fontSize: 14, color: t.dim, lineHeight: 1.5 }}>
+              I can see all your cars, their warnings, costs, bookings and service history.
+              {mic ? " Type, or press the microphone and talk — in English or Hindi." : " Type your question below."}
+            </p>
+            <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+              {SUGGESTIONS.map((s) => <GhostButton key={s} night={night} onClick={() => send(s)}>{s}</GhostButton>)}
             </div>
-            <button
-              onClick={() => send("yes, book it")}
-              disabled={busy}
-              style={{
-                border: "none", borderRadius: 10, padding: "10px 14px", background: color.accentDeep,
-                color: color.onAccent, fontFamily: SANS, fontSize: 13, fontWeight: 600,
-                cursor: busy ? "not-allowed" : "pointer", whiteSpace: "nowrap",
-              }}
-            >
-              Book it
-            </button>
           </div>
-        </div>
-      )}
+        )}
+        {turns.map((m) => <Bubble key={m.id} m={m} />)}
+        {busy && <TypingDots />}
+        {problem && <Bubble m={{ role: "system", text: problem }} />}
+        {pending && (
+          <div role="group" aria-label="Waiting for your yes" style={{
+            border: `1px solid ${t.edge}`, borderRadius: 14, padding: "14px 16px", background: t.card,
+          }}>
+            <Meta night={night} style={{ color: t.positive }}>Waiting for your yes</Meta>
+            <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 600, color: t.ink, marginTop: 6 }}>{pending.summary}</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button
+                type="button" onClick={() => decide("confirm")} disabled={busy}
+                style={{
+                  flex: 1, border: "none", borderRadius: 10, padding: "11px 14px", background: color.accentDeep,
+                  color: color.onAccent, fontFamily: SANS, fontSize: 14, fontWeight: 600,
+                  cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
+                }}
+              >
+                Yes, do it
+              </button>
+              <GhostButton night={night} grow disabled={busy} onClick={() => decide("cancel")}>No</GhostButton>
+            </div>
+          </div>
+        )}
+        {receipt && (
+          <div style={{ border: `1px solid ${t.edge}`, borderRadius: 14, padding: "14px 16px", background: t.card }}>
+            <Meta night={night} style={{ color: t.positive }}>Confirmed</Meta>
+            <div style={{ fontFamily: SANS, fontSize: 14, fontWeight: 600, color: t.ink, marginTop: 6 }}>
+              {formatSlot(receipt.slot_start)}
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <GhostButton night={night} onClick={() => onBooked(receipt)}>View receipt</GhostButton>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
 
       <div style={{
         position: "sticky", bottom: 0, padding: "12px 16px 16px",
         background: t.page, borderTop: `1px solid ${t.edge}`, marginTop: 10,
       }}>
         <div style={{ display: "flex", gap: 8 }}>
+          {mic && (
+            <button
+              type="button" onClick={toggleMic}
+              disabled={busy && !recorder.recording}
+              aria-label={recorder.recording ? "Stop and send" : "Talk to the assistant"}
+              style={{
+                width: 46, borderRadius: 12, cursor: busy && !recorder.recording ? "not-allowed" : "pointer",
+                border: `1px solid ${recorder.recording ? color.accentDeep : t.edgeStrong}`,
+                background: recorder.recording ? color.accentDeep : t.card,
+                color: recorder.recording ? color.onAccent : t.ink,
+              }}
+            >
+              {recorder.recording ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ margin: "0 auto" }}><rect x="5" y="5" width="14" height="14" rx="2" /></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto" }}>
+                  <rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+                </svg>
+              )}
+            </button>
+          )}
           <input
             value={input}
+            aria-label="Message"
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            disabled={done || busy}
-            placeholder={done ? "Conversation ended" : "Ask anything about your car…"}
+            onKeyDown={(e) => e.key === "Enter" && send(input)}
+            disabled={busy || recorder.recording}
+            placeholder={recorder.recording ? "Listening…" : "Ask anything about your cars…"}
             style={{
               flex: 1, borderRadius: 12, border: `1px solid ${t.edgeStrong}`, background: t.card,
               padding: "12px 14px", fontFamily: SANS, fontSize: 14, color: t.ink, outline: "none",
             }}
           />
           <button
-            onClick={() => send()}
-            disabled={done || busy || !input.trim()}
-            aria-label="Send"
+            type="button" onClick={() => send(input)} disabled={!canSend} aria-label="Send"
             style={{
               border: "none", borderRadius: 12, width: 46, background: color.accentDeep, color: color.onAccent,
-              cursor: done || busy ? "not-allowed" : "pointer", opacity: input.trim() ? 1 : 0.5,
+              cursor: canSend ? "pointer" : "not-allowed", opacity: canSend ? 1 : 0.5,
             }}
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto" }}>

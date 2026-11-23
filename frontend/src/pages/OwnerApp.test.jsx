@@ -4,7 +4,7 @@ import { formatSlot } from "@autosaarthi/core";
 
 const logout = vi.fn();
 vi.mock("../auth/AuthContext.jsx", () => ({ useAuth: () => ({ logout }) }));
-vi.mock("../api.js", () => ({ api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock("../api.js", () => ({ api: { get: vi.fn(), post: vi.fn(), del: vi.fn(), upload: vi.fn() } }));
 
 const { api } = await import("../api.js");
 const { default: OwnerApp, HealthyCard } = await import("./OwnerApp.jsx");
@@ -32,6 +32,7 @@ function serve({ detail: d = detail(), service: s = service() } = {}) {
     if (path === "/api/fleet") return Promise.resolve({ vehicles: [{ vin: VIN, severity: null }] });
     if (path === `/api/vehicle/${VIN}`) return Promise.resolve(d);
     if (path === SERVICE_PATH) return s instanceof Error ? Promise.reject(s) : Promise.resolve(s);
+    if (path === "/api/assistant/thread") return Promise.resolve({ turns: [], pending_action: null });
     return Promise.reject(new Error(`unexpected GET ${path}`));
   });
 }
@@ -100,12 +101,29 @@ function alertFor(prediction, serviceOver = {}) {
   });
 }
 
-/** Through the agent to the receipt: the agent confirms a booking on start. */
-function bookOnStart() {
-  api.post.mockResolvedValue({
-    turns: [], run_id: "run-1", plan: null, offered_slots: [], objections_handled: [],
-    booking: { booked: true, slot_start: "2026-10-24T04:30:00+00:00", center_id: "SC-PUN-01", appointment_id: "APT-9" },
+const PROPOSAL = { id: "act-1", kind: "book", vin: VIN, summary: "Book the Bolero at SC-PUN-01 on Sat 24 Oct, 10:00 am" };
+const MADE = { appointment_id: "APT-9", center_id: "SC-PUN-01", slot_start: "2026-10-24T04:30:00+00:00", status: "booked" };
+
+/** Through the assistant to the receipt: "Book a service" asks for a booking, the assistant proposes
+ *  one, and nothing is booked until the owner says yes. */
+function bookViaAssistant() {
+  api.post.mockImplementation((path) => {
+    if (path === "/api/assistant/message") {
+      return Promise.resolve({ reply: "I can book that for you. Shall I?", pending_action: PROPOSAL, done: null });
+    }
+    if (path === "/api/assistant/actions/act-1/confirm") {
+      return Promise.resolve({ ok: true, kind: "book", message: "Done — your Bolero is booked.", booking: MADE });
+    }
+    return Promise.reject(new Error(`unexpected POST ${path}`));
   });
+}
+
+/** The whole way: Book a service → the proposal → Yes → the receipt. */
+async function bookAndOpenReceipt() {
+  fireEvent.click(await screen.findByRole("button", { name: "Book a service" }));
+  await screen.findByText("Waiting for your yes");
+  fireEvent.click(screen.getByRole("button", { name: "Yes, do it" }));
+  fireEvent.click(await screen.findByRole("button", { name: "View receipt" }));
 }
 
 describe("what a repair costs", () => {
@@ -136,10 +154,10 @@ describe("what a repair costs", () => {
 
   it("puts the server's repair cost on the receipt as the estimate", async () => {
     alertFor(BATTERY);
-    bookOnStart();
+    bookViaAssistant();
     render(<OwnerApp />);
     await screen.findByText("₹5,200");
-    fireEvent.click(screen.getByRole("button", { name: "Book a service" }));
+    await bookAndOpenReceipt();
     expect(await screen.findByText("Estimate")).toBeInTheDocument();
     expect(screen.getByText("₹5,200")).toBeInTheDocument();
   });
@@ -164,9 +182,9 @@ describe("what a repair costs", () => {
     });
 
     it("the receipt has no estimate", async () => {
-      bookOnStart();
+      bookViaAssistant();
       render(<OwnerApp />);
-      fireEvent.click(await screen.findByRole("button", { name: "Book a service" }));
+      await bookAndOpenReceipt();
       expect(await screen.findByText("Confirmed")).toBeInTheDocument();
       expect(screen.queryByText("Estimate")).not.toBeInTheDocument();
       expect(screen.queryByText(/₹/)).not.toBeInTheDocument();
@@ -250,12 +268,12 @@ describe("a booking the server already has", () => {
   });
 });
 
-describe("a booking made with the agent in this visit", () => {
+describe("a booking made with the assistant in this visit", () => {
   it("is on home when the owner goes back, before the server's view has it", async () => {
     alertFor(BATTERY);
-    bookOnStart();
+    bookViaAssistant();
     render(<OwnerApp />);
-    fireEvent.click(await screen.findByRole("button", { name: "Book a service" }));
+    await bookAndOpenReceipt();
     fireEvent.click(await screen.findByRole("button", { name: "Back to my car" }));
     expect(await screen.findByText("Confirmed")).toBeInTheDocument();
     expect(screen.getByText(formatSlot("2026-10-24T04:30:00+00:00"))).toBeInTheDocument();
@@ -264,16 +282,16 @@ describe("a booking made with the agent in this visit", () => {
   });
 
   it("takes the centre's name from the server once the view is read again", async () => {
-    // The agent's confirmation carries only the centre's id; the re-read
+    // The assistant's confirmation carries only the centre's id; the re-read
     // after booking has the same appointment with its name.
     alertFor(BATTERY);
-    bookOnStart();
+    bookViaAssistant();
     render(<OwnerApp />);
     await screen.findByText("₹5,200");
     alertFor(BATTERY, {
       booking: { ...UPCOMING, appointment_id: "APT-9", slot_start: "2026-10-24T10:00:00+05:30" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Book a service" }));
+    await bookAndOpenReceipt();
     expect(await screen.findByText("Hero-M&M Service, Kothrud")).toBeInTheDocument();
     expect(screen.getByText("APT-9")).toBeInTheDocument();
   });

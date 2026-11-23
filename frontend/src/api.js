@@ -73,7 +73,7 @@ export function refreshSession() {
   return refreshing;
 }
 
-async function request(path, { method = "GET", body, params, _retried = false } = {}) {
+async function request(path, { method = "GET", body, form, params, _retried = false } = {}) {
   const url = new URL(path, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -82,14 +82,16 @@ async function request(path, { method = "GET", body, params, _retried = false } 
   }
 
   const token = getToken();
-  const headers = { "Content-Type": "application/json" };
+  // A file upload (`form`) sets no Content-Type of its own: the browser adds multipart's, with the
+  // boundary only it knows.
+  const headers = form ? {} : { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(url, {
     method,
     headers,
     credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
   });
 
   const requestId = res.headers.get("X-Request-ID");
@@ -112,7 +114,7 @@ async function request(path, { method = "GET", body, params, _retried = false } 
       // /refresh itself). One retry only: if the retried request is also
       // refused, something else is wrong and it falls through to sign-out.
       if (token && !_retried && (await refreshSession())) {
-        return request(path, { method, body, params, _retried: true });
+        return request(path, { method, body, form, params, _retried: true });
       }
       if (onUnauthorized) onUnauthorized();
     }
@@ -171,5 +173,8 @@ async function download(path, fallbackName) {
 export const api = {
   get: (path, params) => request(path, { params }),
   post: (path, body) => request(path, { method: "POST", body }),
+  del: (path) => request(path, { method: "DELETE" }),
+  /** A multipart upload: `form` is a FormData. */
+  upload: (path, form) => request(path, { method: "POST", form }),
   download,
 };
