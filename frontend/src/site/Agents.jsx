@@ -25,10 +25,17 @@ const RUN = [
 ];
 const BEAT_MS = 1100;
 
-function AgentCard({ agent, live, tech }) {
+// The card is lit where the pointer is, in the helper's own colour.
+function spot(e) {
+  const r = e.currentTarget.getBoundingClientRect();
+  e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+  e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+}
+
+function AgentCard({ agent, live, tech, index = 0 }) {
   const helper = HELPERS[agent.id];
   return (
-    <article className="s-agent" data-tone={helper.tone} data-live={live ? "true" : undefined}>
+    <article className="s-agent" data-tone={helper.tone} data-live={live ? "true" : undefined} style={{ "--i": index }} onPointerMove={spot}>
       <div className="s-agent-top">
         <i className="s-dot" />
         <h3>{helper.name}</h3>
@@ -61,7 +68,16 @@ export default function Agents() {
   const { on: tech } = useDetail();
   const [beat, setBeat] = useState(-1);
   const timer = useRef(0);
+  const orchestra = useRef(null);
   const reduce = reducedMotion();
+  // The team arrives as it scrolls into view. Without an observer (or with reduced motion) it is simply there.
+  const [arrived, setArrived] = useState(() => reduce || typeof IntersectionObserver === "undefined");
+  useEffect(() => {
+    if (arrived || !orchestra.current) return undefined;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setArrived(true); io.disconnect(); } }, { threshold: 0.1 });
+    io.observe(orchestra.current);
+    return () => io.disconnect();
+  }, [arrived]);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -103,7 +119,7 @@ export default function Agents() {
           <p className="s-agents-status" aria-live="polite">{status}</p>
         </div>
 
-        <div className="s-orchestra">
+        <div className="s-orchestra" ref={orchestra} data-arrived={arrived ? "true" : "false"}>
           <div className="s-orchestra-master">
             <AgentCard agent={lead} live={liveId === "lead"} tech={tech} />
           </div>
@@ -111,7 +127,7 @@ export default function Agents() {
             <i style={{ width: running ? `${Math.min(100, (beat / (RUN.length - 2)) * 100)}%` : beat >= RUN.length ? "100%" : "0%" }} />
           </div>
           <div className="s-orchestra-workers">
-            {team.map((a) => <AgentCard key={a.id} agent={a} live={liveId === a.id} tech={tech} />)}
+            {team.map((a, i) => <AgentCard key={a.id} agent={a} live={liveId === a.id} tech={tech} index={i + 1} />)}
           </div>
         </div>
       </div>

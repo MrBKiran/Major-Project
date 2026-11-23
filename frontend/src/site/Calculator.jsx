@@ -137,7 +137,7 @@ export default function Calculator() {
         </div>
 
         <p className="s-calc-foot">
-          Figures are the ones used for the demo fleet. Real prices vary by car, part and city, and a warning is a
+          Figures are typical for the cars shown. Real prices vary by car, part and city, and a warning is a
           prediction from the car's readings, not a promise.
         </p>
       </div>

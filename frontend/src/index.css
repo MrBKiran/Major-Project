@@ -182,6 +182,45 @@ p {
 }
 @keyframes aurora-drift { to { transform: translate3d(70px, 46px, 0) scale(1.18); } }
 
+/* The sign-in hero's wider palette: the brand orange plus the hues the public site tells its story in
+   (teal, violet, blue, gold, green), so the scene is a place with colour in it and not one orange line. */
+:root {
+  --scene-teal: #14b8a6;
+  --scene-violet: #8b5cf6;
+  --scene-blue: #3b82f6;
+  --scene-gold: #f5b83d;
+  --scene-green: #34c77b;
+  --scene-rose: #f0546a;
+  --scene-paint-blue: #2f5d9c;
+  --scene-paint-red: #7a2a3a;
+  --scene-paint-green: #3f6b57;
+  --scene-paint-silver: #6d6f78;
+  --scene-warm: #ffe2a8;
+}
+/* A richer aurora: five slow blobs, each its own hue, drifting at different speeds. */
+.aurora-rich > i { opacity: 0.6; }
+.aurora-rich > i:nth-child(1) { background: radial-gradient(closest-side, color-mix(in srgb, var(--color-accent) 40%, transparent), transparent); }
+.aurora-rich > i:nth-child(2) { background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-violet) 34%, transparent), transparent); animation-duration: 26s; }
+.aurora-rich > i:nth-child(3) { background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-teal) 30%, transparent), transparent); animation-duration: 23s; }
+.aurora-rich > i:nth-child(4) {
+  width: 380px; height: 380px; right: 10%; bottom: 6%; animation-delay: -4s; animation-duration: 29s;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-blue) 30%, transparent), transparent);
+}
+.aurora-rich > i:nth-child(5) {
+  width: 340px; height: 340px; left: 6%; top: 40%; animation-delay: -10s; animation-duration: 31s;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--scene-gold) 26%, transparent), transparent);
+}
+
+/* "breaks." shimmers through the warm end of the palette instead of sitting in one flat orange. */
+@keyframes hue-slide { to { background-position: -300% 0; } }
+.splash-shift {
+  background: linear-gradient(90deg, var(--color-accent-ink), var(--color-p1), var(--scene-gold), var(--scene-rose), var(--color-accent-ink));
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  animation: hue-slide 7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .splash-shift { animation: none; } }
+
 /* The road scene (fx/RoadScene.jsx). Each dash is drawn at its closest, then
    scaled from the vanishing point at (400, 236): that scaling is the perspective. */
 .road-dash {
