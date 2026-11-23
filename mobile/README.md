@@ -1,7 +1,8 @@
 # AutoSaarthi — the owner's phone app
 
 Expo SDK 58 (React Native 0.88, React 19), TypeScript, Expo Router. Android first; iOS builds
-from the same code but is not a target yet. The car screen (Android Auto) is Phase 5.
+from the same code but is not a target yet. The car's screen (Android Auto) is built too — see
+[`docs/android-auto.md`](../docs/android-auto.md); it is tested up to the car host and has not yet been run on one.
 
 What it does, for a vehicle owner:
 
@@ -13,6 +14,7 @@ What it does, for a vehicle owner:
 | Book | open slots in the car's city; book, move or cancel — one booking per car, moved in one step |
 | Assistant | one conversation about every car the owner has, typed or spoken (`/api/assistant/*`); it remembers earlier chats, can only *propose* a booking, and runs it when the owner taps Yes or says yes |
 | History | every service visit |
+| In the car (Android Auto) | how the car is and what it costs to fix; booking, only while parked. One line and nothing to tap while the car moves — the server decides which, from the car's telemetry |
 | Account | who is signed in, whether notifications reach this phone, sign out (everywhere) |
 
 Dark mode follows the phone. Everything is reachable with TalkBack, tap targets are at least 48 pt,

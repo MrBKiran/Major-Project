@@ -54,7 +54,7 @@ UEBA security layer.
 | Deterministic demo reset | ✅ `backend/scripts/reset_demo.py` — restores the exact state the slide numbers were computed from |
 | Owner assistant with voice | ✅ one conversation about every car an owner has, typed or spoken (server-side Groq Whisper speech-to-text); remembers earlier chats; can only *propose* a booking, which runs when the owner confirms — `backend/app/assistant/`, phone and web |
 | Web app | ✅ public site, sign-in, staff console, head-unit preview and the owner app at `/app` — one design system (`docs/design-system.md`) |
-| Phone app | ✅ Expo (Android first): sign in (email, phone code, Google), my car, why this part, book, assistant, history, account — `mobile/`. Still open: Android Auto car screen, push on a real device, an emulator run |
+| Phone app | ✅ Expo (Android first): sign in (email, phone code, Google), my car, why this part, book, assistant, history, account — `mobile/`. The car's screen (Android Auto) is built and tested up to the car host — [`docs/android-auto.md`](docs/android-auto.md). Still open: running it on Android Auto / the Desktop Head Unit, push on a real device, an emulator run |
 | Run guide | ✅ [`docs/running.md`](docs/running.md) |
 
 ---

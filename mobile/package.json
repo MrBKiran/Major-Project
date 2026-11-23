@@ -1,7 +1,7 @@
 {
   "name": "@autosaarthi/mobile",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "dependencies": {
     "@autosaarthi/core": "file:../packages/core",
     "@autosaarthi/tokens": "file:../packages/tokens",

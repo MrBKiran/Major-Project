@@ -306,6 +306,61 @@ another; evidence with the model's confidence; booking screen with no open slots
 the protected routes returning to sign-in after a reload (the preview keeps no token); dark mode
 taking the night tokens. Not done yet: an Android emulator run, push on a device, Maestro flows.
 
+## Phase 5 — Android Auto
+
+The owner's car screen: how the car is, what a repair costs now rather than later, and booking while parked, drawn
+by Android Auto from the same server endpoints the web head unit uses. Guide: [`android-auto.md`](android-auto.md).
+
+### User journeys
+
+| # | As a… | I want to… | so that… |
+|---|---|---|---|
+| 1 | driver | see how my car is the moment the phone connects, without touching anything | I do not have to take out the phone |
+| 2 | driver | see one line and nothing to tap while the car moves | the screen never asks for my hands |
+| 3 | owner | book a service in three taps when parked | the repair is done before it breaks |
+| 4 | owner | have this work with the app closed and the phone in a pocket | connecting to the car is enough |
+| 5 | the team | know the car shows and allows only what the server allowed | the car is no weaker a place to be safe than the web head unit |
+
+### What was built, and how it is held
+
+| Behaviour | Tests | Result |
+|---|---|---|
+| The car's screens are small JSON documents; invalid ones are refused with a reason; two lines and two buttons at most | `CarModelTest` (7) | passing |
+| Every screen builds through the real Car App Library, which checks its own rules (buttons, rows, header); taps reach the app with the screen and button; booking taps are parked-only; rows capped to the host's limit | `TemplateBuilderTest` (14) | passing |
+| What the host counts against its five-template limit: only title / row count / row titles / loading / kind | `RefreshTest` (12) | passing |
+| A connecting car starts the app's JavaScript and shows a loading pane; no answer in 15 s → a message with *Try again*; a reload of the JavaScript cannot detach the new module; push / pop / replace; a refused template becomes a sentence, not a crash | `CarBridgeTest` (26) | passing |
+| The manifest as Android Auto reads it (service, category, descriptor, API level); the host check in debug and release, with Android Auto on the release list | `ServiceTest` (6) | passing |
+| The screens for each drive state; parked shows the whole picture, moving or briefly stopped shows one line; buttons only when the server allows touch; G7 element cap; owner words | `view.test.ts` (23) | passing |
+| Sign-in (resume / wait for the phone / owners only / offline), refresh and staleness, a car that starts to move closes the booking flow, booking once and only a time offered, several cars, late answers dropped | `controller.test.ts` (37) | passing |
+| One client for the phone and the car | `shared.test.ts` (2) | passing |
+
+Totals: native module **65**, mobile **240** (from 178), typecheck and lint clean, `expo export` for Android and web
+and `gradlew :app:assembleDebug` succeed. Run on an emulator: see [`android-auto.md`](android-auto.md#what-has-been-run-on-a-device).
+
+### Found along the way
+
+* **Reading the host's rules changed the design.** The Screen class's documentation says the host allows five
+  templates in a task and *closes the app* on a sixth; only refreshes (same title, same rows' titles) are free.
+  The first design redrew the card in place on every change, which would have used the limit up within a few traffic
+  lights. Now `Refresh.kt` decides, a refresh is drawn in place and anything else replaces the screen, loading is a
+  pane, brief stops look like driving, the booking is one pane, and only the screen being looked at changes. A test
+  runs forty alternating parked / moving updates and checks the screen has sent one counting template.
+* **The library lists the top screen first.** The stack reported to JavaScript was reversed until a test caught it.
+* **Reloading the JavaScript could leave the car with nobody to tell**: the new module attaches before the old one is
+  torn down, and the old one's detach cleared the new sink. Detach is now by identity.
+* **A template the library refuses would have crashed the car app**; it becomes a sentence on the screen and a log line.
+* **Two clients renewing one rotating refresh token look like theft**, so the phone and the car share one client.
+* **The module's Gradle output was about to be committed** (720 generated files); it is ignored.
+
+### Not done
+
+* **Not run on Android Auto or the Desktop Head Unit.** No Google Play image or DHU on this machine; the emulator run
+  proves the build, the manifest, the entry order and the module, not a template drawn by a host.
+* **The five-template limit is built to the documentation, not observed.**
+* **Starting the JavaScript from the car with the app closed** is reasoned from React Native's own source and the
+  entry-order evidence above, not reproduced.
+* **Google Play**: category review and an installed-from-Play build for a real car are not done.
+
 ## Design critique — fixes
 
 A design critique of the web app and the phone app (skills: `ecc:design-system`,

@@ -375,6 +375,13 @@ The app installs on the phone as **AutoSaarthi**. The first build takes a long t
 normal). After this, you only need `npx expo start` and the app opens against it. Re-run `prebuild`
 only if you change `app.json` or the icons.
 
+### In the car (Android Auto)
+
+The phone app also has a screen for Android Auto: how the car is, and booking a service while parked.
+It needs a development build, the phone signed in once, and Google's Desktop Head Unit or a car. The steps,
+how to make the demo car park and drive, and what has and has not been tested are in
+[android-auto.md](android-auto.md).
+
 ### Signing in on the phone
 
 * **Email and password:** `ramesh.pawar@example.in` / `autosaarthi`.

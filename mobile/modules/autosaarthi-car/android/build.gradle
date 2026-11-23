@@ -1,0 +1,41 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.autosaarthicar'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.autosaarthicar"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+  testOptions {
+    unitTests {
+      // Robolectric needs the merged resources and manifest to build a Context for the car host.
+      includeAndroidResources = true
+    }
+  }
+}
+
+// The Android for Cars App Library, which draws the templates on the car's screen. 1.7.0 is the
+// latest stable release; app-projected is the Android Auto (phone projection) part.
+def carAppVersion = "1.7.0"
+
+dependencies {
+  // Only to start the app's JavaScript when a car connects and the app is not open (CarBridge.kt).
+  compileOnly "com.facebook.react:react-android"
+
+  implementation "androidx.car.app:app:$carAppVersion"
+  implementation "androidx.car.app:app-projected:$carAppVersion"
+
+  testImplementation "androidx.car.app:app-testing:$carAppVersion"
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation "org.robolectric:robolectric:4.16"
+  testImplementation "androidx.test:core:1.6.1"
+}
